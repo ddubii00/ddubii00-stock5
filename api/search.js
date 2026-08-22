@@ -20,19 +20,22 @@ function normalizeKoreanResult(item) {
   const code = String(item?.itemCode || item?.code || item?.symbol || '').replace(/\.(KS|KQ)$/i, '');
   const name = item?.stockName || item?.name || item?.itemName || '';
   if (!/^\d{6}$/.test(code) || !name) return null;
-  const market = String(item?.stockExchangeType || item?.marketType || item?.exchange || '').toUpperCase();
+  const market = String(item?.typeCode || item?.stockExchangeType || item?.marketType || item?.exchange || '').toUpperCase();
   const exchange = market.includes('KOSDAQ') ? 'KOSDAQ' : 'KOSPI';
   return { symbol: `${code}.${exchange === 'KOSDAQ' ? 'KQ' : 'KS'}`, name, exchange, type: 'KR' };
 }
 
 async function fetchNaverStockMatches(query) {
-  const response = await fetch(`https://m.stock.naver.com/api/search/all?query=${encodeURIComponent(query)}`, {
+  const response = await fetch(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(query)}&type=search&target=stock`, {
     headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR,ko;q=0.9' },
   });
   if (!response.ok) throw new Error(`Naver search responded ${response.status}`);
   const payload = await response.json();
-  const items = payload?.stockList || payload?.stocks || payload?.result?.stockList || [];
-  return items.map(normalizeKoreanResult).filter(Boolean);
+  const items = payload?.items || payload?.stockList || payload?.stocks || payload?.result?.stockList || [];
+  return items
+    .filter((item) => !item?.category || item.category === 'stock')
+    .map(normalizeKoreanResult)
+    .filter(Boolean);
 }
 
 function uniqueMatches(matches) {

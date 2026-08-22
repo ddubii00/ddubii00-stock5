@@ -963,9 +963,23 @@ app.get('/api/search', async (req, res) => {
     const indexMatches = Object.entries(INDEX_MAP)
       .filter(([key]) => key.includes(upperQ) || upperQ.includes(key.slice(0, 3)))
       .map(([, v]) => ({ symbol: v.symbol, name: v.name, exchange: v.exchange, type: 'INDEX' }));
+    const naverMatches = isKoreanQuery ? await fetch(`https://ac.stock.naver.com/ac?q=${encodeURIComponent(q.trim())}&type=search&target=stock`, {
+      headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR,ko;q=0.9' },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Naver search responded ${response.status}`);
+        const payload = await response.json();
+        return (payload.items || [])
+          .filter((item) => item?.category === 'stock' && /^\d{6}$/.test(String(item.code || '')))
+          .map((item) => {
+            const exchange = String(item.typeCode || '').toUpperCase() === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI';
+            return { symbol: `${item.code}.${exchange === 'KOSDAQ' ? 'KQ' : 'KS'}`, name: item.name, exchange, type: 'KR' };
+          });
+      })
+      .catch(() => []) : [];
     const krxList = isKoreanQuery && !krxCache.items.length
       ? KRX_FALLBACK_ITEMS
-      : await loadKrxList();
+      : await loadKrxList().catch(() => []);
     if (isKoreanQuery && !krxCache.items.length) {
       loadKrxList().catch(() => {});
     }
@@ -974,7 +988,7 @@ app.get('/api/search', async (req, res) => {
       .filter(x => x.score > 0)
       .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name, 'ko'))
       .slice(0, 15)
-      .map(({ item }) => ({ symbol: `${item.code}.KS`, name: item.name, exchange: item.marketType === '코스닥' ? 'KOSDAQ' : 'KOSPI', type: 'KR' }));
+      .map(({ item }) => ({ symbol: `${item.code}.${item.marketType === '코스닥' ? 'KQ' : 'KS'}`, name: item.name, exchange: item.marketType === '코스닥' ? 'KOSDAQ' : 'KOSPI', type: 'KR' }));
     let usMatches = [];
     if (!isKoreanQuery) {
       try {
@@ -987,7 +1001,12 @@ app.get('/api/search', async (req, res) => {
         console.error('Yahoo search error:', e.message);
       }
     }
-    return res.json([...indexMatches, ...krxMatches, ...usMatches]);
+    const seen = new Set();
+    return res.json([...indexMatches, ...naverMatches, ...krxMatches, ...usMatches].filter((item) => {
+      if (!item?.symbol || seen.has(item.symbol)) return false;
+      seen.add(item.symbol);
+      return true;
+    }));
   } catch (e) {
     console.error('Search error:', e.message);
     return res.status(500).json({ error: e.message });

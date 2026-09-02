@@ -240,6 +240,10 @@ function kisWsUrl() {
 }
 
 function hasKisConfig() {
+  // Oracle can keep a persistent KIS REST/WebSocket session; Vercel must use public fallback sources.
+  if (process.env.VERCEL === '1') return false;
+  const provider = String(process.env.MARKET_DATA_PROVIDER || 'auto').trim().toLowerCase();
+  if (provider === 'naver' || provider === 'fallback') return false;
   return Boolean(process.env.KIS_APP_KEY && process.env.KIS_APP_SECRET);
 }
 

@@ -317,13 +317,49 @@ async function buildChartSetPng(images, { symbolName, symbol, mainTf, limit, ich
   return canvasToPngBlob(canvas);
 }
 
-async function copyPngToClipboard(blob) {
-  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
-    throw new Error('현재 브라우저가 PNG 클립보드 복사를 지원하지 않습니다. Chrome/Edge의 localhost 또는 HTTPS에서 사용해주세요.');
+async function copyPngWithLegacySelection(blob) {
+  const url = URL.createObjectURL(blob);
+  const container = document.createElement('div');
+  const image = document.createElement('img');
+  container.contentEditable = 'true';
+  container.setAttribute('aria-hidden', 'true');
+  container.style.cssText = 'position:fixed;left:-10000px;top:0;width:1px;height:1px;overflow:hidden;';
+  image.src = url;
+  container.appendChild(image);
+  document.body.appendChild(container);
+
+  try {
+    await image.decode();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNode(image);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    if (!document.execCommand('copy')) {
+      throw new Error('브라우저가 이미지 복사를 허용하지 않았습니다.');
+    }
+  } finally {
+    window.getSelection()?.removeAllRanges();
+    container.remove();
+    URL.revokeObjectURL(url);
   }
-  await navigator.clipboard.write([
-    new ClipboardItem({ [blob.type]: blob }),
-  ]);
+}
+
+async function copyPngToClipboard(blobOrPromise) {
+  const blobPromise = Promise.resolve(blobOrPromise);
+
+  // ClipboardItem accepts a Promise<Blob>. Calling write immediately keeps the
+  // click's user-activation alive while the chart PNG is being rendered.
+  if (window.isSecureContext && navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+    await navigator.clipboard.write([
+      new ClipboardItem({ 'image/png': blobPromise }),
+    ]);
+    return;
+  }
+
+  // HTTP IP addresses cannot use the modern Clipboard API. Some Chrome builds
+  // still allow a selected image to be copied through this legacy user-gesture path.
+  await copyPngWithLegacySelection(await blobPromise);
 }
 
 function formatAxisTime(time, zone) {
@@ -1814,22 +1850,21 @@ export default function ChartColumn({ id, defaultSymbol, defaultName }) {
   const handleCopyChartSet = async () => {
     setCopyStatus('copying');
     try {
-      const images = await captureChartSet();
-      const blob = await buildChartSetPng(images, {
+      const pngPromise = captureChartSet().then(images => buildChartSetPng(images, {
         symbolName,
         symbol,
         mainTf,
         limit,
         ichiTf,
         ichiLimit,
-      });
-      await copyPngToClipboard(blob);
+      }));
+      await copyPngToClipboard(pngPromise);
       setCopyStatus('copied');
       setTimeout(() => setCopyStatus(''), 1800);
     } catch (e) {
       console.error('Chart set copy failed:', e);
-      setCopyStatus('failed');
-      setTimeout(() => setCopyStatus(''), 2600);
+      setCopyStatus(window.isSecureContext ? 'failed' : 'https');
+      setTimeout(() => setCopyStatus(''), 4200);
     }
   };
 
@@ -1908,12 +1943,12 @@ export default function ChartColumn({ id, defaultSymbol, defaultName }) {
           <div className="period-group">
             <button
               type="button"
-              className={`copy-chart-btn${copyStatus === 'copied' ? ' copied' : ''}${copyStatus === 'failed' ? ' failed' : ''}`}
+              className={`copy-chart-btn${copyStatus === 'copied' ? ' copied' : ''}${copyStatus === 'failed' ? ' failed' : ''}${copyStatus === 'https' ? ' https' : ''}`}
               onClick={handleCopyChartSet}
               disabled={copyStatus === 'copying' || !chartsReady}
               title="현재 차트 1세트를 PNG로 클립보드에 복사"
             >
-              {copyStatus === 'copying' ? '복사중' : copyStatus === 'copied' ? '복사됨' : copyStatus === 'failed' ? '복사실패' : '복사'}
+              {copyStatus === 'copying' ? '복사중' : copyStatus === 'copied' ? '복사됨' : copyStatus === 'https' ? 'HTTPS 필요' : copyStatus === 'failed' ? '복사실패' : '복사'}
             </button>
             <button
               type="button"

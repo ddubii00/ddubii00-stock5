@@ -328,6 +328,11 @@ html, body {
   background: #dc2626;
   color: #fff;
 }
+.copy-chart-btn.https {
+  border-color: #d97706;
+  background: #d97706;
+  color: #fff;
+}
 
 /* ── MA LEGEND ── */
 .ma-legend {

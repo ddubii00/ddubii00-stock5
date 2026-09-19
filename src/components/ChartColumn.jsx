@@ -844,7 +844,7 @@ const BASE_OPTS = {
   },
 };
 
-export default function ChartColumn({ id, defaultSymbol, defaultName, marketMode = 'KRX', memo = '', memoPosition = { x: 12, y: 58 }, onMemoChange }) {
+export default function ChartColumn({ id, defaultSymbol, defaultName }) {
   // ① localStorage로 마지막 선택 종목 복원
   const storageKey = `stock5_symbol_${id}`;
   const storedRaw   = localStorage.getItem(storageKey);
@@ -868,8 +868,6 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, marketMode
   const [quote, setQuote] = useState(null);
   const [copyStatus, setCopyStatus] = useState('');
   const [chartsReady, setChartsReady] = useState(false);
-  const [note, setNote] = useState(memo);
-  const [notePos, setNotePos] = useState(memoPosition);
   const [loadVersion, setLoadVersion] = useState(0);
   const [mainVisible, setMainVisible] = useState({
     candle: true,
@@ -925,14 +923,6 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, marketMode
   const syncLock    = useRef(false);
   const xhairLock   = useRef(false);
   const inited      = useRef(false);
-
-  const dragNote = (event) => {
-    const start = { x: event.clientX, y: event.clientY, pos: notePos };
-    let finalPos = notePos;
-    const move = e => { finalPos = { x: Math.max(0, start.pos.x + e.clientX - start.x), y: Math.max(38, start.pos.y + e.clientY - start.y) }; setNotePos(finalPos); };
-    const end = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', end); onMemoChange?.(note, finalPos); };
-    document.addEventListener('mousemove', move); document.addEventListener('mouseup', end);
-  };
 
   // ① 종목 선택 시 localStorage 저장
   const handleSelect = useCallback(({ symbol: sym, name }) => {
@@ -1912,7 +1902,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, marketMode
 
   // ─── Render ──────────────────────────────────────────
   return (
-    <div className={`chart-column ${marketMode === 'KRX2' ? 'after-hours-mode' : ''}`}>
+    <div className="chart-column">
       {/* Header */}
       <div className="column-header">
         <StockSearch onSelect={handleSelect} placeholder="종목/지수 검색 (예: 하이닉스, KOSPI, AAPL, S&P500)..." />
@@ -2003,7 +1993,6 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, marketMode
 
       {/* 차트 영역 */}
       <div className="charts-area">
-        <div className="signal-chip">부분매도: A 5% · B 10% · C 15% · D 30% · E 20% · F 15% (중복 신호는 한 번만)</div>
         <div ref={priceSectionRef} className="chart-section" style={{ position: 'relative' }}>
           <div className="chart-label">캔들차트</div>
           <div ref={priceRef} />
@@ -2079,7 +2068,6 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, marketMode
           <div ref={ichiTooltipRef} className="ichi-tooltip" />
         </div>
       </div>
-      <div className="draggable-note" style={{ left: notePos.x, top: notePos.y }}><div className="note-grip" onMouseDown={dragNote}>⋮⋮ 메모 이동</div><textarea maxLength="100" value={note} onChange={e => setNote(e.target.value)} onBlur={() => onMemoChange?.(note, notePos)} placeholder="100자 메모" /></div>
 
       {analysisOpen && (
         <div className="analysis-modal-backdrop" role="presentation">

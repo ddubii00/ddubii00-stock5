@@ -1,178 +1,32 @@
 import { useCallback, useEffect, useState } from 'react';
 import ChartColumn from './components/ChartColumn';
+import StockSearch from './components/StockSearch';
 import './index.css';
 
-// 7. 4개 차트 세트 (2×2 그리드)
-// 1. 마지막 선택 종목 기억 → localStorage 키를 각 컬럼마다 부여
-const COLUMNS = [
-  { id: 'col-1', defaultSymbol: '000660.KS', defaultName: 'SK하이닉스' },
-  { id: 'col-2', defaultSymbol: '005930.KS', defaultName: '삼성전자' },
-  { id: 'col-3', defaultSymbol: '^GSPC',     defaultName: 'S&P 500' },
-  { id: 'col-4', defaultSymbol: '^KS11',     defaultName: 'KOSPI 종합' },
-];
+const GROUPS = ['1. 롱 보유', '2. 숏 보유', '3. 롱 관심', '4. 숏 관심'];
+const DEFAULT_STATE = { mode: 'KRX', items: [] };
+const signed = (v, suffix = '') => Number.isFinite(Number(v)) ? `${Number(v) > 0 ? '+' : ''}${Number(v).toLocaleString('ko-KR', { maximumFractionDigits: 2 })}${suffix}` : '-';
 
-function formatFixed(value, digits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '';
-  return n.toLocaleString('ko-KR', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  });
+function Login({ onLogin }) {
+  const [password, setPassword] = useState(''); const [error, setError] = useState('');
+  const submit = async e => { e.preventDefault(); setError(''); const r = await fetch('/api/state', { headers: { 'x-stock5-password': password } }); if (!r.ok) return setError('비밀번호를 확인해 주세요.'); sessionStorage.setItem('stock5-8-password', password); onLogin(password, await r.json()); };
+  return <main className="login-page"><form className="login-card" onSubmit={submit}><h1>stock5-8</h1><p>관심종목과 메모는 모든 기기에서 공유됩니다.</p><input autoFocus type="password" inputMode="numeric" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} /><button>입장</button>{error && <small>{error}</small>}</form></main>;
 }
 
-function formatSignedFixed(value, digits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '';
-  const sign = n > 0 ? '+' : '';
-  return `${sign}${formatFixed(n, digits)}`;
+function WatchlistModal({ state, onChange, onClose }) {
+  const [group, setGroup] = useState(GROUPS[0]); const [quotes, setQuotes] = useState({});
+  const add = stock => { if (!state.items.some(item => item.symbol === stock.symbol)) onChange({ ...state, items: [...state.items, { ...stock, id: crypto.randomUUID(), group, memo: '', memoPosition: { x: 12, y: 58 } }] }); };
+  useEffect(() => { state.items.forEach(item => fetch(`/api/quote?symbol=${encodeURIComponent(item.symbol)}`).then(r => r.ok ? r.json() : null).then(q => q && setQuotes(old => ({ ...old, [item.symbol]: q })))); }, [state.items]);
+  const reorder = (e, targetId) => { e.preventDefault(); const id = e.dataTransfer.getData('stock-id'); if (!id || id === targetId) return; const next = [...state.items]; const from = next.findIndex(x => x.id === id); const to = next.findIndex(x => x.id === targetId); next.splice(to, 0, next.splice(from, 1)[0]); onChange({ ...state, items: next }); };
+  return <div className="modal-backdrop"><section className="watchlist-modal"><header><div><h2>종목</h2><p>카테고리별 순서가 차트 순서입니다.</p></div><button className="close-button" onClick={onClose}>닫기</button></header><div className="category-tabs">{GROUPS.map(name => <button className={group === name ? 'active' : ''} key={name} onClick={() => setGroup(name)}>{name}</button>)}</div><StockSearch onSelect={add} placeholder="한국·미국·일본 종목 또는 지수 검색 (예: 삼전, AAPL, Nikkei)" />{GROUPS.map(name => <div className="watch-group" key={name}><h3>{name}</h3>{state.items.filter(item => item.group === name).map(item => { const q = quotes[item.symbol]; return <div className="watch-row" key={item.id} draggable onDragStart={e => e.dataTransfer.setData('stock-id', item.id)} onDragOver={e => e.preventDefault()} onDrop={e => reorder(e, item.id)}><span className="drag-handle">⠿</span><div><b>{item.name}</b><small>{item.symbol}</small></div><div className={`watch-quote ${(q?.change || 0) >= 0 ? 'up' : 'down'}`}>{q ? <><b>{signed(q.price)}</b><small>{signed(q.change)} ({signed(q.changePct, '%')})</small></> : <small>시세 불러오는 중</small>}</div><button className="remove-button" title={`${item.name} 삭제`} onClick={() => onChange({ ...state, items: state.items.filter(row => row.id !== item.id) })}>×</button></div>; })}</div>)}</section></div>;
 }
 
-function formatSignedPercent(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '';
-  const sign = n > 0 ? '+' : '';
-  return `${sign}${n.toFixed(2)}%`;
+export default function App() {
+  const [password, setPassword] = useState(''); const [state, setState] = useState(null); const [modal, setModal] = useState(false); const [saving, setSaving] = useState(false);
+  const save = useCallback(async next => { setState(next); setSaving(true); try { await fetch('/api/state', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-stock5-password': password }, body: JSON.stringify(next) }); } finally { setSaving(false); } }, [password]);
+  const login = (pw, initial) => { setPassword(pw); setState({ ...DEFAULT_STATE, ...initial, items: initial.items || [] }); };
+  useEffect(() => { const pw = sessionStorage.getItem('stock5-8-password'); if (pw) fetch('/api/state', { headers: { 'x-stock5-password': pw } }).then(r => r.ok ? r.json() : Promise.reject()).then(data => login(pw, data)).catch(() => sessionStorage.removeItem('stock5-8-password')); }, []);
+  if (!state) return <Login onLogin={login} />;
+  const ordered = GROUPS.flatMap(group => state.items.filter(item => item.group === group));
+  return <div className="app"><header className="app-header"><strong className="app-title">stock5-8</strong><div className="header-actions"><button className={state.mode === 'KRX' ? 'active' : ''} onClick={() => save({ ...state, mode: 'KRX' })}>KRX</button><button className={state.mode === 'KRX2' ? 'active' : ''} onClick={() => save({ ...state, mode: 'KRX2' })}>KRX 장후</button><button onClick={() => setModal(true)}>종목</button><span className="save-state">{saving ? '저장 중…' : '공유 저장됨'}</span></div></header>{ordered.length ? <div className="dashboard-grid watch-dashboard">{ordered.map(item => <div className="watch-chart" key={item.id}><div className="watch-category">{item.group}</div><ChartColumn id={`watch-${item.id}`} defaultSymbol={item.symbol} defaultName={item.name} marketMode={state.mode} memo={item.memo} memoPosition={item.memoPosition} onMemoChange={(memo, memoPosition) => save({ ...state, items: state.items.map(row => row.id === item.id ? { ...row, memo, memoPosition } : row) })} /></div>)}</div> : <main className="empty-state"><h2>관심 종목을 추가하세요</h2><p>상단의 ‘종목’ 버튼에서 카테고리를 고르고 종목·지수를 검색할 수 있습니다.</p><button onClick={() => setModal(true)}>종목 추가</button></main>}{modal && <WatchlistModal state={state} onChange={save} onClose={() => setModal(false)} />}</div>;
 }
-
-function timeParts(timeZone) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date());
-
-  const weekday = parts.find(part => part.type === 'weekday')?.value;
-  const hour = Number(parts.find(part => part.type === 'hour')?.value);
-  const minute = Number(parts.find(part => part.type === 'minute')?.value);
-  return { weekday, minutes: hour * 60 + minute };
-}
-
-function isWeekday(weekday) {
-  return weekday !== 'Sat' && weekday !== 'Sun';
-}
-
-function isKrxUpdateWindow() {
-  const { weekday, minutes } = timeParts('Asia/Seoul');
-  return isWeekday(weekday) && minutes >= 9 * 60 && minutes <= 15 * 60 + 31;
-}
-
-function isUsOpen() {
-  const { weekday, minutes } = timeParts('America/New_York');
-  return isWeekday(weekday) && minutes >= 9 * 60 + 30 && minutes <= 16 * 60;
-}
-
-function App() {
-  const [marketSummary, setMarketSummary] = useState({ kospi: null, kosdaq: null, nasdaq: null, usdKrw: null });
-
-  const fetchQuote = useCallback(async (symbol, signal) => {
-    const response = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`, { signal });
-    const contentType = response.headers.get('content-type') || '';
-    if (!response.ok || !contentType.includes('application/json')) return null;
-
-    const data = await response.json();
-    return data && Number.isFinite(Number(data.price)) ? data : null;
-  }, []);
-
-  const refreshMarketSummary = useCallback(async (signal) => {
-    const [kospi, kosdaq, nasdaq, usdKrw] = await Promise.all([
-      fetchQuote('^KS11', signal).catch(() => null),
-      fetchQuote('^KQ11', signal).catch(() => null),
-      fetchQuote('^IXIC', signal).catch(() => null),
-      fetchQuote('KRW=X', signal).catch(() => null),
-    ]);
-
-    setMarketSummary((current) => ({
-      kospi: kospi || current.kospi,
-      kosdaq: kosdaq || current.kosdaq,
-      nasdaq: nasdaq || current.nasdaq,
-      usdKrw: usdKrw || current.usdKrw,
-    }));
-  }, [fetchQuote]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const update = () => refreshMarketSummary(controller.signal).catch(() => {});
-
-    update();
-    let timer = null;
-
-    if (isKrxUpdateWindow() || isUsOpen()) {
-      timer = setInterval(() => {
-        if (!isKrxUpdateWindow() && !isUsOpen()) {
-          clearInterval(timer);
-          timer = null;
-          return;
-        }
-        update();
-      }, isKrxUpdateWindow() ? 1000 : 3000);
-    }
-
-    return () => {
-      controller.abort();
-      if (timer) clearInterval(timer);
-    };
-  }, [refreshMarketSummary]);
-
-  return (
-    <div className="app">
-      <header className="app-header">
-        <div className="market-summary" aria-label="시장 요약">
-          {marketSummary.usdKrw && (
-            <span className={`market-item ${marketSummary.usdKrw.change >= 0 ? 'up' : 'down'}`}>
-              달러/원<strong className="market-price">{formatFixed(marketSummary.usdKrw.price, 2)}</strong>
-              {Number.isFinite(marketSummary.usdKrw.changePct) && Number.isFinite(marketSummary.usdKrw.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.usdKrw.changePct)}, {formatSignedFixed(marketSummary.usdKrw.change, 2)})
-                </span>
-              )}
-            </span>
-          )}
-          {marketSummary.kospi && (
-            <span className={`market-item ${marketSummary.kospi.change >= 0 ? 'up' : 'down'}`}>
-              KOSPI<strong className="market-price">{formatFixed(marketSummary.kospi.price, 2)}</strong>
-              {Number.isFinite(marketSummary.kospi.changePct) && Number.isFinite(marketSummary.kospi.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.kospi.changePct)}, {formatSignedFixed(marketSummary.kospi.change, 2)})
-                </span>
-              )}
-            </span>
-          )}
-          {marketSummary.kosdaq && (
-            <span className={`market-item ${marketSummary.kosdaq.change >= 0 ? 'up' : 'down'}`}>
-              KOSDAQ<strong className="market-price">{formatFixed(marketSummary.kosdaq.price, 2)}</strong>
-              {Number.isFinite(marketSummary.kosdaq.changePct) && Number.isFinite(marketSummary.kosdaq.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.kosdaq.changePct)}, {formatSignedFixed(marketSummary.kosdaq.change, 2)})
-                </span>
-              )}
-            </span>
-          )}
-          {marketSummary.nasdaq && (
-            <span className={`market-item ${marketSummary.nasdaq.change >= 0 ? 'up' : 'down'}`}>
-              나스닥<strong className="market-price">{formatFixed(marketSummary.nasdaq.price, 2)}</strong>
-              {Number.isFinite(marketSummary.nasdaq.changePct) && Number.isFinite(marketSummary.nasdaq.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.nasdaq.changePct)}, {formatSignedFixed(marketSummary.nasdaq.change, 2)})
-                </span>
-              )}
-            </span>
-          )}
-        </div>
-      </header>
-      <div className="dashboard-grid">
-        {COLUMNS.map(col => (
-          <ChartColumn
-            key={col.id}
-            id={col.id}
-            defaultSymbol={col.defaultSymbol}
-            defaultName={col.defaultName}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export default App;

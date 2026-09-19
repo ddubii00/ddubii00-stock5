@@ -6,6 +6,7 @@ import cors from 'cors';
 import WebSocket from 'ws';
 import YahooFinance from 'yahoo-finance2';
 import { analyzeCharts } from '../api/_analyze.js';
+import { authorized, loadState, saveState } from '../api/_state.js';
 
 dotenv.config({ path: '.env.local', quiet: true });
 dotenv.config({ quiet: true });
@@ -16,6 +17,15 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
+
+app.all('/api/state', async (req, res) => {
+  if (!authorized(req)) return res.status(401).json({ error: 'invalid password' });
+  try {
+    if (req.method === 'GET') return res.json(await loadState());
+    if (req.method === 'PUT') return res.json(await saveState(req.body));
+    return res.status(405).json({ error: 'method not allowed' });
+  } catch (error) { return res.status(500).json({ error: error.message }); }
+});
 
 let krxCache = { loadedAt: 0, items: [] };
 const ohlcvCache = new Map();

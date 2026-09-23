@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import ChartColumn from './components/ChartColumn';
+import { apiUrl } from './api';
 import './index.css';
 
 // 7. 4개 차트 세트 (2×2 그리드)
@@ -68,7 +69,7 @@ function App() {
   const [showBollinger, setShowBollinger] = useState(false);
 
   const fetchQuote = useCallback(async (symbol, signal) => {
-    const response = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`, { signal });
+    const response = await fetch(apiUrl(`/quote?symbol=${encodeURIComponent(symbol)}`), { signal });
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok || !contentType.includes('application/json')) return null;
 

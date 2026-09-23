@@ -8,6 +8,7 @@ import {
 } from 'lightweight-charts';
 import { calculateMACD, calculateIchimoku, calculateMA, calculateBollingerBands, buildTimeMap } from '../utils/indicators';
 import StockSearch from './StockSearch';
+import { apiUrl } from '../api';
 
 const MAIN_TFS = [
   { label: '1분',  interval: '1m' },
@@ -1522,7 +1523,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
   const fetchQuote = useCallback(async (sym, signal) => {
     if (!sym) return;
-    const quoteResponse = await fetch(`/api/quote?symbol=${encodeURIComponent(sym)}`, { signal });
+    const quoteResponse = await fetch(apiUrl(`/quote?symbol=${encodeURIComponent(sym)}`), { signal });
     const quoteContentType = quoteResponse.headers.get('content-type') || '';
     if (quoteResponse.ok && quoteContentType.includes('application/json')) {
       const quoteData = await quoteResponse.json();
@@ -1533,7 +1534,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     }
 
     const realtimeKorean = isKoreanSymbol(sym) && isMarketUpdateWindow(sym);
-    const dailyUrl = `/api/ohlcv?symbol=${encodeURIComponent(sym)}&interval=day&limit=6`;
+    const dailyUrl = apiUrl(`/ohlcv?symbol=${encodeURIComponent(sym)}&interval=day&limit=6`);
     const response = await fetch(dailyUrl, { signal });
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok || !contentType.includes('application/json')) return;
@@ -1542,7 +1543,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
     let nextQuote = buildQuoteFromCandles(candles);
     if (realtimeKorean) {
-      const minuteResponse = await fetch(`/api/ohlcv?symbol=${encodeURIComponent(sym)}&interval=1m&limit=5`, { signal });
+      const minuteResponse = await fetch(apiUrl(`/ohlcv?symbol=${encodeURIComponent(sym)}&interval=1m&limit=5`), { signal });
       const minuteContentType = minuteResponse.headers.get('content-type') || '';
       if (minuteResponse.ok && minuteContentType.includes('application/json')) {
         const minuteData = await minuteResponse.json();
@@ -1559,7 +1560,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
   const fetchMain = useCallback(async (sym, tf, lim, { followLatest = false } = {}) => {
     if (!sym || !ser.current.candle) return;
     const viewKey = `${sym}:${tf.interval}:${lim}`;
-    const r    = await fetch(`/api/ohlcv?symbol=${encodeURIComponent(sym)}&interval=${tf.interval}&limit=${requestLimit(tf, lim)}`);
+    const r    = await fetch(apiUrl(`/ohlcv?symbol=${encodeURIComponent(sym)}&interval=${tf.interval}&limit=${requestLimit(tf, lim)}`));
     const contentType = r.headers.get('content-type') || '';
     if (!r.ok) {
       const body = contentType.includes('application/json') ? await r.json().catch(() => null) : await r.text();
@@ -1650,7 +1651,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
   const fetchIchi = useCallback(async (sym, tf, lim) => {
     if (!sym || !ser.current.ichiCandle) return;
-    const r    = await fetch(`/api/ohlcv?symbol=${encodeURIComponent(sym)}&interval=${tf.interval}&limit=${ichimokuRequestLimit(tf, lim)}`);
+    const r    = await fetch(apiUrl(`/ohlcv?symbol=${encodeURIComponent(sym)}&interval=${tf.interval}&limit=${ichimokuRequestLimit(tf, lim)}`));
     const contentType = r.headers.get('content-type') || '';
     if (!r.ok) {
       const body = contentType.includes('application/json') ? await r.json().catch(() => null) : await r.text();
@@ -1803,7 +1804,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
   useEffect(() => {
     if (!symbol || !chartsReady || !supportsKisRealtimeStream(symbol)) return undefined;
-    const stream = new EventSource(`/api/stream/quote?symbol=${encodeURIComponent(symbol)}`);
+    const stream = new EventSource(apiUrl(`/stream/quote?symbol=${encodeURIComponent(symbol)}`));
 
     const handleQuote = (event) => {
       try {
@@ -1906,7 +1907,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     try {
       const images = await captureChartSet();
 
-      const response = await fetch('/api/analyze', {
+      const response = await fetch(apiUrl('/analyze'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

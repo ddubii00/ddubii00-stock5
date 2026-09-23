@@ -110,6 +110,26 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+.header-bb-button {
+  flex: 0 0 auto;
+  min-width: 34px;
+  padding: 3px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.header-bb-button:hover,
+.header-bb-button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 @media (max-width: 1024px) {
   .app-header {
     flex-wrap: wrap;

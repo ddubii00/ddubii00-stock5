@@ -6,7 +6,7 @@ import {
   LineSeries,
   CrosshairMode,
 } from 'lightweight-charts';
-import { calculateMACD, calculateIchimoku, calculateMA, buildTimeMap } from '../utils/indicators';
+import { calculateMACD, calculateIchimoku, calculateMA, calculateBollingerBands, buildTimeMap } from '../utils/indicators';
 import StockSearch from './StockSearch';
 
 const MAIN_TFS = [
@@ -844,7 +844,7 @@ const BASE_OPTS = {
   },
 };
 
-export default function ChartColumn({ id, defaultSymbol, defaultName }) {
+export default function ChartColumn({ id, defaultSymbol, defaultName, showBollinger = false }) {
   // ① localStorage로 마지막 선택 종목 복원
   const storageKey = `stock5_symbol_${id}`;
   const storedRaw   = localStorage.getItem(storageKey);
@@ -943,6 +943,12 @@ export default function ChartColumn({ id, defaultSymbol, defaultName }) {
       ser.current.maLines?.[idx]?.applyOptions({ visible: mainVisible[`ma${period}`] });
     });
   }, [mainVisible]);
+
+  useEffect(() => {
+    ser.current.bollingerUpper?.applyOptions({ visible: showBollinger });
+    ser.current.bollingerMiddle?.applyOptions({ visible: showBollinger });
+    ser.current.bollingerLower?.applyOptions({ visible: showBollinger });
+  }, [showBollinger]);
 
   useEffect(() => {
     ser.current.ichiCandle?.applyOptions({ visible: ichiVisible.candle });
@@ -1107,6 +1113,21 @@ export default function ChartColumn({ id, defaultSymbol, defaultName }) {
         ...NO_PRICE_LINE,
       })
     );
+    ser.current.bollingerUpper = pc.addSeries(LineSeries, {
+      color: '#2563eb', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false,
+      priceFormat: { type: 'custom', formatter: (price) => formatPriceLabel(price, symbolRef.current) },
+      visible: false, ...NO_PRICE_LINE,
+    });
+    ser.current.bollingerMiddle = pc.addSeries(LineSeries, {
+      color: '#2563eb', lineWidth: 1, crosshairMarkerVisible: false,
+      priceFormat: { type: 'custom', formatter: (price) => formatPriceLabel(price, symbolRef.current) },
+      visible: false, ...NO_PRICE_LINE,
+    });
+    ser.current.bollingerLower = pc.addSeries(LineSeries, {
+      color: '#2563eb', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false,
+      priceFormat: { type: 'custom', formatter: (price) => formatPriceLabel(price, symbolRef.current) },
+      visible: false, ...NO_PRICE_LINE,
+    });
 
     ser.current.vol = vc.addSeries(HistogramSeries, {
       color: '#ef5350',
@@ -1492,6 +1513,10 @@ export default function ChartColumn({ id, defaultSymbol, defaultName }) {
       ser.current.maLines[idx]?.setData(safeLineData(maData));
       return buildTimeMap(maData);
     });
+    const bollinger = calculateBollingerBands(candles);
+    ser.current.bollingerUpper?.setData(safeLineData(bollinger.map(({ time, upper }) => ({ time, value: upper }))));
+    ser.current.bollingerMiddle?.setData(safeLineData(bollinger.map(({ time, middle }) => ({ time, value: middle }))));
+    ser.current.bollingerLower?.setData(safeLineData(bollinger.map(({ time, lower }) => ({ time, value: lower }))));
     drawMacdBackground();
   }, [drawMacdBackground, mainTf]);
 
@@ -1562,6 +1587,10 @@ export default function ChartColumn({ id, defaultSymbol, defaultName }) {
       ser.current.maLines[idx]?.setData(safeLineData(maData));
       return buildTimeMap(maData);
     });
+    const bollinger = calculateBollingerBands(candles);
+    ser.current.bollingerUpper?.setData(safeLineData(bollinger.map(({ time, upper }) => ({ time, value: upper }))));
+    ser.current.bollingerMiddle?.setData(safeLineData(bollinger.map(({ time, middle }) => ({ time, value: middle }))));
+    ser.current.bollingerLower?.setData(safeLineData(bollinger.map(({ time, lower }) => ({ time, value: lower }))));
 
     // 거래량
     const volData = candles

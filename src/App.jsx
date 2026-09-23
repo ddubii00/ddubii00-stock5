@@ -64,7 +64,8 @@ function isUsOpen() {
 }
 
 function App() {
-  const [marketSummary, setMarketSummary] = useState({ kospi: null, kosdaq: null, nasdaq: null, usdKrw: null });
+  const [marketSummary, setMarketSummary] = useState({ kospi: null, kosdaq: null, nasdaq: null, sp500: null, usdKrw: null });
+  const [showBollinger, setShowBollinger] = useState(false);
 
   const fetchQuote = useCallback(async (symbol, signal) => {
     const response = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`, { signal });
@@ -76,10 +77,11 @@ function App() {
   }, []);
 
   const refreshMarketSummary = useCallback(async (signal) => {
-    const [kospi, kosdaq, nasdaq, usdKrw] = await Promise.all([
+    const [kospi, kosdaq, nasdaq, sp500, usdKrw] = await Promise.all([
       fetchQuote('^KS11', signal).catch(() => null),
       fetchQuote('^KQ11', signal).catch(() => null),
       fetchQuote('^IXIC', signal).catch(() => null),
+      fetchQuote('^GSPC', signal).catch(() => null),
       fetchQuote('KRW=X', signal).catch(() => null),
     ]);
 
@@ -87,6 +89,7 @@ function App() {
       kospi: kospi || current.kospi,
       kosdaq: kosdaq || current.kosdaq,
       nasdaq: nasdaq || current.nasdaq,
+      sp500: sp500 || current.sp500,
       usdKrw: usdKrw || current.usdKrw,
     }));
   }, [fetchQuote]);
@@ -159,7 +162,26 @@ function App() {
               )}
             </span>
           )}
+          {marketSummary.sp500 && (
+            <span className={`market-item ${marketSummary.sp500.change >= 0 ? 'up' : 'down'}`}>
+              S&amp;P500<strong className="market-price">{formatFixed(marketSummary.sp500.price, 2)}</strong>
+              {Number.isFinite(marketSummary.sp500.changePct) && Number.isFinite(marketSummary.sp500.change) && (
+                <span className="market-change market-change-fixed">
+                  ({formatSignedPercent(marketSummary.sp500.changePct)}, {formatSignedFixed(marketSummary.sp500.change, 2)})
+                </span>
+              )}
+            </span>
+          )}
         </div>
+        <button
+          type="button"
+          className={`header-bb-button${showBollinger ? ' active' : ''}`}
+          onClick={() => setShowBollinger(visible => !visible)}
+          title="전체 캔들차트 볼린저밴드 표시"
+          aria-pressed={showBollinger}
+        >
+          BB
+        </button>
       </header>
       <div className="dashboard-grid">
         {COLUMNS.map(col => (
@@ -168,6 +190,7 @@ function App() {
             id={col.id}
             defaultSymbol={col.defaultSymbol}
             defaultName={col.defaultName}
+            showBollinger={showBollinger}
           />
         ))}
       </div>

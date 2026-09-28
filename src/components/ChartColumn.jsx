@@ -494,12 +494,11 @@ function isClosedDailyDate(dateString, symbol) {
   return marketHolidaySet(date.getUTCFullYear(), symbol).has(dateString);
 }
 
-function filterDailyTradingCandles(candles, symbol, tf) {
-  if (tf?.interval !== 'day') return candles;
-  return candles.filter(candle => {
-    const date = typeof candle.time === 'string' ? candle.time.slice(0, 10) : null;
-    return date ? !isClosedDailyDate(date, symbol) : true;
-  });
+function filterDailyTradingCandles(candles) {
+  // Daily OHLCV is already sourced from actual trading records. Do not remove
+  // a returned bar with the local holiday table: the table can be stale and
+  // otherwise hides an in-progress candle on an open trading day.
+  return candles;
 }
 
 function nextTradingDateString(time, symbol) {

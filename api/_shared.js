@@ -438,7 +438,60 @@ async function fetchKoreanMinuteOhlcv(code, interval, limit) {
   return data;
 }
 
+function aggregateKoreanDailyRows(rows, interval, limit) {
+  const buckets = new Map();
+  rows.forEach((row) => {
+    const rawDate = String(row.date || '');
+    if (!/^\d{8}$/.test(rawDate)) return;
+    const date = new Date(Date.UTC(
+      Number(rawDate.slice(0, 4)),
+      Number(rawDate.slice(4, 6)) - 1,
+      Number(rawDate.slice(6, 8)),
+    ));
+    const bucketDate = new Date(date);
+    if (interval === 'week') bucketDate.setUTCDate(bucketDate.getUTCDate() - ((bucketDate.getUTCDay() + 6) % 7));
+    else bucketDate.setUTCDate(1);
+    const time = bucketDate.toISOString().slice(0, 10);
+    const current = buckets.get(time);
+    if (!current) {
+      buckets.set(time, { time, open: row.open, high: row.high, low: row.low, close: row.close, volume: Number(row.volume) || 0 });
+      return;
+    }
+    current.high = Math.max(current.high, row.high);
+    current.low = Math.min(current.low, row.low);
+    current.close = row.close;
+    current.volume += Number(row.volume) || 0;
+  });
+  return [...buckets.values()].sort((a, b) => a.time.localeCompare(b.time)).slice(-limit);
+}
+
+async function fetchKoreanDailyOhlcv(code, limit) {
+  const fetchCount = Math.min(limit + 300, 2500);
+  const url = `https://fchart.stock.naver.com/sise.nhn?symbol=${encodeURIComponent(code)}&timeframe=day&count=${fetchCount}&requestType=0`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR,ko;q=0.9' },
+  });
+  if (!res.ok) throw new Error(`Naver responded ${res.status}`);
+
+  const xml = await res.text();
+  return [...xml.matchAll(/item data="([^"]+)"/g)]
+    .map(m => m[1].split('|'))
+    .map(p => ({
+      date: p[0],
+      open: parseNumeric(p[1]),
+      high: parseNumeric(p[2]),
+      low: parseNumeric(p[3]),
+      close: parseNumeric(p[4]),
+      volume: parseNumeric(p[5]),
+    }))
+    .filter(x => x.open !== null && x.close !== null);
+}
+
 export async function fetchKoreanOhlcv(code, interval, limit) {
+  if (interval === 'week' || interval === 'month') {
+    const dailyLimit = Math.min(Math.max(limit * (interval === 'week' ? 8 : 35), 400), 2500);
+    return aggregateKoreanDailyRows(await fetchKoreanDailyOhlcv(code, dailyLimit), interval, limit);
+  }
   if (interval !== 'day') {
     const cleanCode = code.replace(/\.(KS|KQ)$/, '');
     const normalizedInterval = interval === '1h' ? '60m' : interval;
@@ -463,27 +516,7 @@ export async function fetchKoreanOhlcv(code, interval, limit) {
     }
   }
 
-  const fetchCount = Math.min(limit + 300, 2500);
-  const url = `https://fchart.stock.naver.com/sise.nhn?symbol=${encodeURIComponent(code)}&timeframe=day&count=${fetchCount}&requestType=0`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR,ko;q=0.9' },
-  });
-  if (!res.ok) throw new Error(`Naver responded ${res.status}`);
-
-  const xml = await res.text();
-  const rows = [...xml.matchAll(/item data="([^"]+)"/g)]
-    .map(m => m[1].split('|'))
-    .map(p => ({
-      date: p[0],
-      open: parseNumeric(p[1]),
-      high: parseNumeric(p[2]),
-      low: parseNumeric(p[3]),
-      close: parseNumeric(p[4]),
-      volume: parseNumeric(p[5]),
-    }))
-    .filter(x => x.open !== null && x.close !== null);
-
-  return rows.slice(-limit);
+  return (await fetchKoreanDailyOhlcv(code, limit)).slice(-limit);
 }
 
 export async function fetchUsOhlcv(symbol, interval, limit) {

@@ -1836,11 +1836,11 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     };
   }, [symbol, chartsReady, applyRealtimeQuote, krxMarket]);
 
-  // ⑧ 실시간 업데이트: 최신 캔들을 3초마다 따라가게 갱신
+  // ⑧ 차트 데이터는 15초마다 갱신하고, 현재가 스트림은 별도로 즉시 반영한다.
   useEffect(() => {
     if (!symbol || !chartsReady) return;
     const isIntra = INTRA_INTERVALS.includes(mainTf.interval);
-    const ms = isIntra ? (isKoreanSymbol(symbol) ? 1000 : 3000) : 5000;
+    const ms = 15_000;
     const t = setInterval(() => {
       if (isMarketUpdateWindow(symbol, krxMarket)) fetchMain(symbol, mainTf, limit, { followLatest: isIntra }).catch(() => {});
     }, ms);
@@ -1849,8 +1849,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
   useEffect(() => {
     if (!symbol || !chartsReady) return;
-    const isIntra = INTRA_INTERVALS.includes(ichiTf.interval);
-    const ms = isIntra ? (isKoreanSymbol(symbol) ? 1000 : 3000) : 5000;
+    const ms = 15_000;
     const t = setInterval(() => {
       if (isMarketUpdateWindow(symbol, krxMarket)) fetchIchi(symbol, ichiTf, ichiLimit).catch(() => {});
     }, ms);

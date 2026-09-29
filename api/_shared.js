@@ -6,6 +6,7 @@ export const yahooFinance = new YahooFinance();
 let krxCache = { loadedAt: 0, items: [] };
 const ohlcvCache = new Map();
 const quoteCache = new Map();
+const krxSessionQuoteCache = new Map();
 let kisTokenCache = { token: '', expiresAt: 0 };
 const REALTIME_QUOTE_TTL_MS = 250;
 const KRX_MINUTE_TTL_MS = 300;
@@ -92,6 +93,51 @@ function isKoreanStockSymbol(symbol) {
 
 function cleanKoreanCode(symbol) {
   return String(symbol || '').replace(/\.(KS|KQ)$/, '');
+}
+
+function normalizeKrxMarket(market) {
+  return String(market || '').toLowerCase() === 'extended' ? 'extended' : 'regular';
+}
+
+function krxClock() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    weekday: 'short',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const value = (type) => parts.find(part => part.type === type)?.value || '';
+  return {
+    weekday: value('weekday'),
+    date: `${value('year')}${value('month')}${value('day')}`,
+    minutes: Number(value('hour')) * 60 + Number(value('minute')),
+  };
+}
+
+function krxQuoteSession(market) {
+  const { weekday, minutes } = krxClock();
+  if (weekday === 'Sat' || weekday === 'Sun') return 'closed';
+  if (minutes >= 9 * 60 && minutes <= 15 * 60 + 32) return 'regular';
+  if (normalizeKrxMarket(market) === 'extended' && minutes >= 16 * 60 && minutes <= 20 * 60) return 'after';
+  return 'closed';
+}
+
+function cachedKrxQuote(symbol, market) {
+  const { date, minutes } = krxClock();
+  const preferredSession = normalizeKrxMarket(market) === 'extended' && minutes > 20 * 60 ? 'after' : 'regular';
+  return krxSessionQuoteCache.get(`${date}:${preferredSession}:${cleanKoreanCode(symbol)}`) || null;
+}
+
+function rememberKrxQuote(symbol, market, session, quote) {
+  if (!quote || !Number.isFinite(Number(quote.price))) return quote;
+  const { date } = krxClock();
+  const decorated = { ...quote, market: normalizeKrxMarket(market), session };
+  krxSessionQuoteCache.set(`${date}:${session}:${cleanKoreanCode(symbol)}`, decorated);
+  return decorated;
 }
 
 function quoteFromCandles(candles) {
@@ -205,6 +251,26 @@ async function fetchKoreanStockQuote(symbol) {
   return quoteFromPriceAndPreviousClose(latest?.close, previousClose) || quoteFromCandles(dailyRows);
 }
 
+async function fetchKoreanQuoteForMarket(symbol, market) {
+  const normalizedMarket = normalizeKrxMarket(market);
+  const session = krxQuoteSession(normalizedMarket);
+  if (session === 'closed') {
+    const cached = cachedKrxQuote(symbol, normalizedMarket);
+    if (cached) return cached;
+  }
+
+  let quote = null;
+  if (hasKisConfig()) {
+    try {
+      quote = await fetchKisDomesticStockQuote(symbol);
+    } catch (e) {
+      console.warn(`KIS Korean quote fallback [${symbol}]:`, e.message);
+    }
+  }
+  quote ||= await fetchKoreanStockQuote(symbol);
+  return rememberKrxQuote(symbol, normalizedMarket, session === 'closed' ? 'regular' : session, quote);
+}
+
 function kisExchangeForUsSymbol(symbol) {
   const overrides = (() => {
     try { return JSON.parse(process.env.KIS_US_EXCHANGE_OVERRIDES || '{}'); }
@@ -258,8 +324,11 @@ async function fetchNaverIndexQuotes() {
   return data;
 }
 
-export async function fetchRealtimeQuote(symbol) {
+export async function fetchRealtimeQuote(symbol, market = 'regular') {
   const key = String(symbol || '').toUpperCase();
+  if (isKoreanStockSymbol(symbol)) {
+    return fetchKoreanQuoteForMarket(symbol, market);
+  }
   const kisQuoteKey = `kis-quote:${symbol}`;
   const now = Date.now();
   const kisCached = quoteCache.get(kisQuoteKey);
@@ -276,17 +345,6 @@ export async function fetchRealtimeQuote(symbol) {
       }
     } catch (e) {
       console.warn(`KIS quote fallback [${symbol}]:`, e.message);
-    }
-  }
-
-  if (isKoreanStockSymbol(symbol)) {
-    const cacheKey = `krx-quote:${symbol}`;
-    const cached = quoteCache.get(cacheKey);
-    if (cached && now - cached.ts < REALTIME_QUOTE_TTL_MS) return cached.data;
-    const krxQuote = await fetchKoreanStockQuote(symbol);
-    if (krxQuote) {
-      quoteCache.set(cacheKey, { ts: now, data: krxQuote });
-      return krxQuote;
     }
   }
 

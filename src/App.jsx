@@ -54,9 +54,12 @@ function isWeekday(weekday) {
   return weekday !== 'Sat' && weekday !== 'Sun';
 }
 
-function isKrxUpdateWindow() {
+function isKrxUpdateWindow(krxMarket) {
   const { weekday, minutes } = timeParts('Asia/Seoul');
-  return isWeekday(weekday) && minutes >= 9 * 60 && minutes <= 15 * 60 + 31;
+  if (!isWeekday(weekday)) return false;
+  const regularSession = minutes >= 9 * 60 && minutes <= 15 * 60 + 32;
+  const afterMarketSession = krxMarket === 'extended' && minutes >= 16 * 60 && minutes <= 20 * 60;
+  return regularSession || afterMarketSession;
 }
 
 function isUsOpen() {
@@ -67,15 +70,19 @@ function isUsOpen() {
 function App() {
   const [marketSummary, setMarketSummary] = useState({ kospi: null, kosdaq: null, nasdaq: null, sp500: null, usdKrw: null });
   const [showBollinger, setShowBollinger] = useState(false);
+  const [krxMarket, setKrxMarket] = useState('regular');
 
   const fetchQuote = useCallback(async (symbol, signal) => {
-    const response = await fetch(apiUrl(`/quote?symbol=${encodeURIComponent(symbol)}`), { signal });
+    const response = await fetch(
+      apiUrl(`/quote?symbol=${encodeURIComponent(symbol)}&market=${krxMarket}`),
+      { signal }
+    );
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok || !contentType.includes('application/json')) return null;
 
     const data = await response.json();
     return data && Number.isFinite(Number(data.price)) ? data : null;
-  }, []);
+  }, [krxMarket]);
 
   const refreshMarketSummary = useCallback(async (signal) => {
     const [kospi, kosdaq, nasdaq, sp500, usdKrw] = await Promise.all([
@@ -102,22 +109,22 @@ function App() {
     update();
     let timer = null;
 
-    if (isKrxUpdateWindow() || isUsOpen()) {
+    if (isKrxUpdateWindow(krxMarket) || isUsOpen()) {
       timer = setInterval(() => {
-        if (!isKrxUpdateWindow() && !isUsOpen()) {
+        if (!isKrxUpdateWindow(krxMarket) && !isUsOpen()) {
           clearInterval(timer);
           timer = null;
           return;
         }
         update();
-      }, isKrxUpdateWindow() ? 1000 : 3000);
+      }, isKrxUpdateWindow(krxMarket) ? 1000 : 3000);
     }
 
     return () => {
       controller.abort();
       if (timer) clearInterval(timer);
     };
-  }, [refreshMarketSummary]);
+  }, [krxMarket, refreshMarketSummary]);
 
   return (
     <div className="app">
@@ -174,15 +181,35 @@ function App() {
             </span>
           )}
         </div>
-        <button
-          type="button"
-          className={`header-bb-button${showBollinger ? ' active' : ''}`}
-          onClick={() => setShowBollinger(visible => !visible)}
-          title="전체 캔들차트 볼린저밴드 표시"
-          aria-pressed={showBollinger}
-        >
-          BB
-        </button>
+        <div className="header-controls" aria-label="차트 및 한국 시장 시세 설정">
+          <button
+            type="button"
+            className={`header-bb-button${showBollinger ? ' active' : ''}`}
+            onClick={() => setShowBollinger(visible => !visible)}
+            title="전체 캔들차트 볼린저밴드 표시"
+            aria-pressed={showBollinger}
+          >
+            BB
+          </button>
+          <button
+            type="button"
+            className={`header-market-button${krxMarket === 'regular' ? ' active' : ''}`}
+            onClick={() => setKrxMarket('regular')}
+            title="KRX 정규장 가격만 표시합니다. 동시호가 종가는 15:32에 한 번 더 확인합니다."
+            aria-pressed={krxMarket === 'regular'}
+          >
+            KRX
+          </button>
+          <button
+            type="button"
+            className={`header-market-button${krxMarket === 'extended' ? ' active' : ''}`}
+            onClick={() => setKrxMarket('extended')}
+            title="KRX 정규장과 16:00~20:00 애프터마켓 가격을 표시합니다."
+            aria-pressed={krxMarket === 'extended'}
+          >
+            KRX2
+          </button>
+        </div>
       </header>
       <div className="dashboard-grid">
         {COLUMNS.map(col => (
@@ -192,6 +219,7 @@ function App() {
             defaultSymbol={col.defaultSymbol}
             defaultName={col.defaultName}
             showBollinger={showBollinger}
+            krxMarket={krxMarket}
           />
         ))}
       </div>

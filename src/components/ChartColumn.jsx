@@ -108,15 +108,23 @@ function isRegularMarketOpen(symbol) {
   return minutes >= 9 * 60 + 30 && minutes <= 16 * 60;
 }
 
-function isMarketUpdateWindow(symbol) {
+function isMarketUpdateWindow(symbol, krxMarket = 'regular') {
   const korean = isKoreanMarketSymbol(symbol);
   const { weekday, minutes } = marketClock(symbolTimeZone(symbol));
   if (weekday === 'Sat' || weekday === 'Sun') return false;
-  if (korean) return minutes >= 9 * 60 && minutes <= 15 * 60 + 31;
+  if (korean) {
+    const regularSession = minutes >= 9 * 60 && minutes <= 15 * 60 + 32;
+    const afterMarketSession = krxMarket === 'extended' && minutes >= 16 * 60 && minutes <= 20 * 60;
+    return regularSession || afterMarketSession;
+  }
   return minutes >= 9 * 60 + 30 && minutes <= 16 * 60;
 }
 
-function marketStateLabel(symbol) {
+function marketStateLabel(symbol, krxMarket = 'regular') {
+  if (isKoreanMarketSymbol(symbol) && krxMarket === 'extended') {
+    const { weekday, minutes } = marketClock('Asia/Seoul');
+    if (weekday !== 'Sat' && weekday !== 'Sun' && minutes >= 16 * 60 && minutes <= 20 * 60) return '시간외';
+  }
   return isRegularMarketOpen(symbol) ? '실시간' : '종가';
 }
 
@@ -844,7 +852,7 @@ const BASE_OPTS = {
   },
 };
 
-export default function ChartColumn({ id, defaultSymbol, defaultName, showBollinger = false }) {
+export default function ChartColumn({ id, defaultSymbol, defaultName, showBollinger = false, krxMarket = 'regular' }) {
   // ① localStorage로 마지막 선택 종목 복원
   const storageKey = `stock5_symbol_${id}`;
   const storedRaw   = localStorage.getItem(storageKey);
@@ -1522,7 +1530,10 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
   const fetchQuote = useCallback(async (sym, signal) => {
     if (!sym) return;
-    const quoteResponse = await fetch(apiUrl(`/quote?symbol=${encodeURIComponent(sym)}`), { signal });
+    const quoteResponse = await fetch(
+      apiUrl(`/quote?symbol=${encodeURIComponent(sym)}&market=${krxMarket}`),
+      { signal }
+    );
     const quoteContentType = quoteResponse.headers.get('content-type') || '';
     if (quoteResponse.ok && quoteContentType.includes('application/json')) {
       const quoteData = await quoteResponse.json();
@@ -1553,7 +1564,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     }
 
     if (nextQuote) setQuote({ ...nextQuote, symbol: sym });
-  }, []);
+  }, [krxMarket]);
 
   // ─── 메인 3개 차트 데이터 로드 ───────────────────────
   const fetchMain = useCallback(async (sym, tf, lim, { followLatest = false } = {}) => {
@@ -1784,9 +1795,9 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     updateQuote();
     let timer = null;
 
-    if (isMarketUpdateWindow(symbol)) {
+    if (isMarketUpdateWindow(symbol, krxMarket)) {
       timer = setInterval(() => {
-        if (!isMarketUpdateWindow(symbol)) {
+        if (!isMarketUpdateWindow(symbol, krxMarket)) {
           clearInterval(timer);
           timer = null;
           return;
@@ -1799,11 +1810,11 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
       controller.abort();
       if (timer) clearInterval(timer);
     };
-  }, [symbol, chartsReady, fetchQuote]);
+  }, [symbol, chartsReady, fetchQuote, krxMarket]);
 
   useEffect(() => {
     if (!symbol || !chartsReady || !supportsKisRealtimeStream(symbol)) return undefined;
-    const stream = new EventSource(apiUrl(`/stream/quote?symbol=${encodeURIComponent(symbol)}`));
+    const stream = new EventSource(apiUrl(`/stream/quote?symbol=${encodeURIComponent(symbol)}&market=${krxMarket}`));
 
     const handleQuote = (event) => {
       try {
@@ -1823,7 +1834,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
       stream.removeEventListener('quote', handleQuote);
       stream.close();
     };
-  }, [symbol, chartsReady, applyRealtimeQuote]);
+  }, [symbol, chartsReady, applyRealtimeQuote, krxMarket]);
 
   // ⑧ 실시간 업데이트: 최신 캔들을 3초마다 따라가게 갱신
   useEffect(() => {
@@ -1831,20 +1842,20 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     const isIntra = INTRA_INTERVALS.includes(mainTf.interval);
     const ms = isIntra ? (isKoreanSymbol(symbol) ? 1000 : 3000) : 5000;
     const t = setInterval(() => {
-      if (isMarketUpdateWindow(symbol)) fetchMain(symbol, mainTf, limit, { followLatest: isIntra }).catch(() => {});
+      if (isMarketUpdateWindow(symbol, krxMarket)) fetchMain(symbol, mainTf, limit, { followLatest: isIntra }).catch(() => {});
     }, ms);
     return () => clearInterval(t);
-  }, [symbol, mainTf, limit, chartsReady, fetchMain]);
+  }, [symbol, mainTf, limit, chartsReady, fetchMain, krxMarket]);
 
   useEffect(() => {
     if (!symbol || !chartsReady) return;
     const isIntra = INTRA_INTERVALS.includes(ichiTf.interval);
     const ms = isIntra ? (isKoreanSymbol(symbol) ? 1000 : 3000) : 5000;
     const t = setInterval(() => {
-      if (isMarketUpdateWindow(symbol)) fetchIchi(symbol, ichiTf, ichiLimit).catch(() => {});
+      if (isMarketUpdateWindow(symbol, krxMarket)) fetchIchi(symbol, ichiTf, ichiLimit).catch(() => {});
     }, ms);
     return () => clearInterval(t);
-  }, [symbol, ichiTf, ichiLimit, chartsReady, fetchIchi]);
+  }, [symbol, ichiTf, ichiLimit, chartsReady, fetchIchi, krxMarket]);
 
   const applyLimit = () => {
     const n = parseInt(limitInput, 10);
@@ -1948,7 +1959,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
                     ({formatSignedPercent(quote.changePct)}, {formatSignedValue(quote.change, '', quoteValueDigits(symbol))})
                   </span>
                 )}
-                <span className="quote-state">{marketStateLabel(symbol)}</span>
+                <span className="quote-state">{marketStateLabel(symbol, krxMarket)}</span>
               </span>
             )}
             {loading && <span className="loading-dot">●</span>}

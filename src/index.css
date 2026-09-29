@@ -34,26 +34,28 @@ html, body {
   z-index: 3000;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 10px 20px;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding: 8px 14px;
   background: #fff;
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow);
   flex-shrink: 0;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .market-summary {
   display: flex;
   align-items: baseline;
   justify-content: flex-start;
-  gap: 2px;
+  flex-wrap: wrap;
+  gap: 1px;
   margin-left: 0;
   text-align: left;
-  white-space: nowrap;
+  white-space: normal;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 800px;
 }
 
 .market-item + .market-item::before {
@@ -68,6 +70,7 @@ html, body {
   font-size: 13px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .market-item strong {
@@ -130,14 +133,47 @@ html, body {
   color: #fff;
 }
 
+.header-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.header-market-button {
+  min-width: 42px;
+  padding: 3px 7px;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.header-market-button:hover,
+.header-market-button.active {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+}
+
 @media (max-width: 1024px) {
   .app-header {
-    flex-wrap: wrap;
+    padding: 7px 10px;
   }
 
   .market-summary {
-    width: 100%;
-    justify-content: flex-start;
+    flex-basis: 100%;
+    padding-bottom: 1px;
+  }
+
+  .header-controls {
+    margin-left: 0;
   }
 }
 

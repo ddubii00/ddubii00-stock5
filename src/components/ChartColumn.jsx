@@ -1227,8 +1227,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
       { c: mc, s: () => ser.current.macdHist, key: 'macd' },
     ];
 
-    mainTrio.forEach(({ c: chart }, i) => {
-      chart.subscribeCrosshairMove((param) => {
+    const handleMainCrosshairMove = (param, i) => {
         // 툴팁 (price 차트에서만)
         if (i === 0) {
           const tip = tooltipRef.current;
@@ -1267,14 +1266,9 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
                     : '') +
                   (maRows ? `<div class="tt-ma-row">${maRows}</div>` : '');
 
-                const cw = priceRef.current?.clientWidth || 400;
-                const tooltipWidth = 168;
-                let lx = param.point.x - tooltipWidth - 14;
-                if (lx < 4) lx = param.point.x + 12;
-                if (lx + tooltipWidth > cw) lx = Math.max(4, cw - tooltipWidth);
-                tip.style.left = lx + 'px';
-                tip.style.top  = Math.max(4, param.point.y - 58) + 'px';
                 tip.style.display = 'block';
+              } else {
+                tip.style.display = 'none';
               }
             }
           }
@@ -1300,8 +1294,18 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
           }
         });
         xhairLock.current = false;
-      });
+    };
+    mainTrio.forEach(({ c: chart }, i) => {
+      chart.subscribeCrosshairMove(param => handleMainCrosshairMove(param, i));
     });
+    // Synthetic positions used during trend-line editing don't emit the chart's move event.
+    const priceContainer = priceRef.current;
+    const onTrendCrosshair = ({ detail }) => handleMainCrosshairMove({
+      point: detail.point,
+      time: detail.candle?.time,
+      seriesData: new Map(detail.candle ? [[ser.current.candle, detail.candle]] : []),
+    }, 0);
+    priceContainer.addEventListener('trend-crosshair', onTrendCrosshair);
 
     ic.subscribeCrosshairMove((param) => {
       const tip = ichiTooltipRef.current;
@@ -1337,12 +1341,6 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
       }
 
       tip.innerHTML = rows.join('');
-      const cw = ichiRef.current?.clientWidth || 400;
-      let lx = param.point.x - 154;
-      if (lx < 4) lx = param.point.x + 10;
-      if (lx + 148 > cw) lx = Math.max(4, cw - 148);
-      tip.style.left = `${lx}px`;
-      tip.style.top = `${Math.max(4, param.point.y - 36)}px`;
       tip.style.display = 'grid';
     });
 
@@ -1357,6 +1355,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
     return () => {
       window.removeEventListener('resize', onResize);
+      priceContainer.removeEventListener('trend-crosshair', onTrendCrosshair);
       inited.current = false;
       bgCanvasRef.current?.remove();
       cloudCanvas.current?.remove();

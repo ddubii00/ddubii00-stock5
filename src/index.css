@@ -447,6 +447,7 @@ html, body {
 .trend-line-toolbar button.active { background: #111827; border-color: #111827; color: white; }
 .trend-line-toolbar button:disabled { opacity: .45; cursor: default; }
 .trend-line-overlay { position: absolute; inset: 0 auto auto 0; overflow: hidden; pointer-events: none; touch-action: none; }
+.trend-line-overlay * { pointer-events: none; }
 
 .chart-section {
   position: relative;
@@ -558,6 +559,8 @@ html, body {
 .price-tooltip {
   display: none;
   position: absolute;
+  top: 4px;
+  right: 4px;
   z-index: 100;
   pointer-events: none;
   background: rgba(255, 255, 255, 0.96);
@@ -610,6 +613,8 @@ html, body {
 .ichi-tooltip {
   display: none;
   position: absolute;
+  top: 4px;
+  right: 4px;
   z-index: 120;
   pointer-events: none;
   grid-template-columns: 1fr 1fr;

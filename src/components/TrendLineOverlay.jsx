@@ -86,6 +86,27 @@ export default function TrendLineOverlay({ chartsRef, seriesRef, candlesRef, con
     return time != null && Number.isFinite(price) ? { time, price } : null;
   };
 
+  const updateCrosshair = (event) => {
+    const chart = chartsRef.current.price;
+    const series = seriesRef.current.candle;
+    const bounds = containerRef.current?.getBoundingClientRect();
+    if (!chart || !series || !bounds) return;
+    const x = event.clientX - bounds.left;
+    const y = event.clientY - bounds.top;
+    if (x < 0 || y < 0 || x > geometry.width || y > geometry.height) {
+      chart.clearCrosshairPosition();
+      containerRef.current.dispatchEvent(new CustomEvent('trend-crosshair', { detail: { point: null } }));
+      return;
+    }
+    const logical = chart.timeScale().coordinateToLogical(x);
+    const candle = Number.isFinite(logical) ? candlesRef.current[Math.round(logical)] : null;
+    const price = series.coordinateToPrice(y);
+    if (candle && Number.isFinite(price)) {
+      chart.setCrosshairPosition(price, candle.time, series);
+      containerRef.current.dispatchEvent(new CustomEvent('trend-crosshair', { detail: { point: { x, y }, candle } }));
+    }
+  };
+
   const beginDrag = (event, line, endpoint) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -95,11 +116,14 @@ export default function TrendLineOverlay({ chartsRef, seriesRef, candlesRef, con
     setSelectedId(line.id);
     setDraft(cleanLine);
     dragRef.current = { line: cleanLine, endpoint, created: !endpoint, x: event.clientX, y: event.clientY };
+    updateCrosshair(event);
   };
 
   const move = (event) => {
     const drag = dragRef.current;
     if (!drag) return;
+    // Preventing the chart's pan gesture also suppresses native mouse events during this drag.
+    updateCrosshair(event);
     const anchor = anchorAt(event);
     if (!anchor) return;
     setDraft({ ...drag.line, [drag.endpoint || 'end']: anchor });
@@ -108,6 +132,7 @@ export default function TrendLineOverlay({ chartsRef, seriesRef, candlesRef, con
   const finish = (event) => {
     const drag = dragRef.current;
     if (!drag) return;
+    updateCrosshair(event);
     const anchor = anchorAt(event);
     const moved = Math.hypot(event.clientX - drag.x, event.clientY - drag.y) >= 3;
     if (anchor && (!drag.created || moved)) {

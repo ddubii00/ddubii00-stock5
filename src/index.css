@@ -439,6 +439,15 @@ html, body {
 /* ── CHARTS AREA ── */
 .charts-area { display: flex; flex-direction: column; }
 
+.bollinger-legend { color: #2563eb; cursor: default; }
+.legend-swatch.bollinger { height: 0; border-top: 1px dashed currentColor; border-radius: 0; }
+.trend-line-editor { position: absolute; inset: 0; z-index: 8; pointer-events: none; outline: none; }
+.trend-line-toolbar { position: absolute; left: 70px; top: 6px; display: flex; gap: 4px; pointer-events: auto; z-index: 2; }
+.trend-line-toolbar button { padding: 2px 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: rgba(255,255,255,.94); color: #111827; font-family: inherit; font-size: 11px; line-height: 1.4; cursor: pointer; }
+.trend-line-toolbar button.active { background: #111827; border-color: #111827; color: white; }
+.trend-line-toolbar button:disabled { opacity: .45; cursor: default; }
+.trend-line-overlay { position: absolute; inset: 0 auto auto 0; overflow: hidden; pointer-events: none; touch-action: none; }
+
 .chart-section {
   position: relative;
   border-bottom: 1px solid var(--border);
@@ -817,3 +826,10 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+.history-notice {
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #64748b;
+  background: #f1f5f9;
+}

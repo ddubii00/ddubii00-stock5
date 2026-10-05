@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     const { symbol, interval = 'day', limit = 300 } = req.query;
     if (!symbol) return res.status(400).json({ error: 'symbol required' });
 
-    const lim = Math.min(Number(limit) || 300, 2000);
+    const lim = Math.min(Math.max(1, Math.floor(Number(limit) || 300)), 2199);
     let data;
 
     const isKorean = /^\d{6}$/.test(symbol) || symbol.endsWith('.KS') || symbol.endsWith('.KQ');

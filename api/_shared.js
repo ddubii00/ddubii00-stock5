@@ -1,5 +1,6 @@
 import process from 'node:process';
 import YahooFinance from 'yahoo-finance2';
+import { extendKoreanDailyHistory } from './_history.js';
 
 export const yahooFinance = new YahooFinance();
 
@@ -532,7 +533,7 @@ async function fetchKoreanDailyOhlcv(code, limit) {
   if (!res.ok) throw new Error(`Naver responded ${res.status}`);
 
   const xml = await res.text();
-  return [...xml.matchAll(/item data="([^"]+)"/g)]
+  const recent = [...xml.matchAll(/item data="([^"]+)"/g)]
     .map(m => m[1].split('|'))
     .map(p => ({
       date: p[0],
@@ -543,11 +544,17 @@ async function fetchKoreanDailyOhlcv(code, limit) {
       volume: parseNumeric(p[5]),
     }))
     .filter(x => x.open !== null && x.close !== null);
+  try {
+    return await extendKoreanDailyHistory(code, limit, recent);
+  } catch (error) {
+    console.warn(`Older history unavailable for ${code}:`, error.message);
+    return recent;
+  }
 }
 
 export async function fetchKoreanOhlcv(code, interval, limit) {
   if (interval === 'week' || interval === 'month') {
-    const dailyLimit = Math.min(Math.max(limit * (interval === 'week' ? 8 : 35), 400), 2500);
+    const dailyLimit = Math.max(limit * (interval === 'week' ? 8 : 35), 400);
     return aggregateKoreanDailyRows(await fetchKoreanDailyOhlcv(code, dailyLimit), interval, limit);
   }
   if (interval !== 'day') {

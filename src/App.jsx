@@ -70,6 +70,7 @@ function isUsOpen() {
 function App() {
   const [marketSummary, setMarketSummary] = useState({ kospi: null, kosdaq: null, nasdaq: null, sp500: null, usdKrw: null });
   const [showBollinger, setShowBollinger] = useState(false);
+  const [globalWeekly, setGlobalWeekly] = useState(false);
   const [krxMarket, setKrxMarket] = useState('regular');
 
   const fetchQuote = useCallback(async (symbol, signal) => {
@@ -184,6 +185,16 @@ function App() {
         <div className="header-controls" aria-label="차트 및 한국 시장 시세 설정">
           <button
             type="button"
+            className={`header-bb-button${globalWeekly ? ' active' : ''}`}
+            onClick={() => setGlobalWeekly(enabled => !enabled)}
+            title="전체 캔들·거래량·MACD·일목균형표를 주봉으로 전환. 끄면 이전 주기로 복원"
+            aria-label="전체 차트 주봉 전환"
+            aria-pressed={globalWeekly}
+          >
+            주
+          </button>
+          <button
+            type="button"
             className={`header-bb-button${showBollinger ? ' active' : ''}`}
             onClick={() => setShowBollinger(visible => !visible)}
             title="전체 캔들차트 볼린저밴드 표시"
@@ -219,6 +230,7 @@ function App() {
             defaultSymbol={col.defaultSymbol}
             defaultName={col.defaultName}
             showBollinger={showBollinger}
+            globalWeekly={globalWeekly}
             krxMarket={krxMarket}
           />
         ))}

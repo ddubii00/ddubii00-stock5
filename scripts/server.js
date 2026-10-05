@@ -6,6 +6,7 @@ import cors from 'cors';
 import WebSocket from 'ws';
 import YahooFinance from 'yahoo-finance2';
 import { analyzeCharts } from '../api/_analyze.js';
+import { extendKoreanDailyHistory } from '../api/_history.js';
 
 dotenv.config({ path: '.env.local', quiet: true });
 dotenv.config({ quiet: true });
@@ -1022,7 +1023,7 @@ async function fetchKoreanDailyOhlcv(code, limit) {
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR,ko;q=0.9' } });
   if (!res.ok) throw new Error(`Naver responded ${res.status}`);
   const xml = await res.text();
-  return [...xml.matchAll(/item data="([^"]+)"/g)]
+  const recent = [...xml.matchAll(/item data="([^"]+)"/g)]
     .map(m => m[1].split('|'))
     .map(p => ({
       date: p[0],
@@ -1033,11 +1034,17 @@ async function fetchKoreanDailyOhlcv(code, limit) {
       volume: parseNumeric(p[5]),
     }))
     .filter(x => x.open !== null && x.close !== null);
+  try {
+    return await extendKoreanDailyHistory(code, limit, recent);
+  } catch (error) {
+    console.warn(`Older history unavailable for ${code}:`, error.message);
+    return recent;
+  }
 }
 
 async function fetchKoreanOhlcv(code, interval, limit) {
   if (interval === 'week' || interval === 'month') {
-    const dailyLimit = Math.min(Math.max(limit * (interval === 'week' ? 8 : 35), 400), 2500);
+    const dailyLimit = Math.max(limit * (interval === 'week' ? 8 : 35), 400);
     return aggregateKoreanDailyRows(await fetchKoreanDailyOhlcv(code, dailyLimit), interval, limit);
   }
   if (interval !== 'day') {
@@ -1124,7 +1131,7 @@ app.get('/api/ohlcv', async (req, res) => {
   try {
     const { symbol, interval = 'day', limit = 300 } = req.query;
     if (!symbol) return res.status(400).json({ error: 'symbol required' });
-    const lim = Math.min(Number(limit) || 300, 2000);
+    const lim = Math.min(Math.max(1, Math.floor(Number(limit) || 300)), 2199);
     let data;
     const isKorean = /^\d{6}$/.test(symbol) || symbol.endsWith('.KS') || symbol.endsWith('.KQ');
     const isIndex = symbol.startsWith('^');

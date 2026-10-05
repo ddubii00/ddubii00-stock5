@@ -6,9 +6,13 @@ import {
   LineSeries,
   CrosshairMode,
 } from 'lightweight-charts';
-import { calculateMACD, calculateIchimoku, calculateMA, calculateBollingerBands, buildTimeMap } from '../utils/indicators';
+import { calculateIchimoku, buildTimeMap } from '../utils/indicators';
 import StockSearch from './StockSearch';
 import { apiUrl } from '../api';
+import TrendLineOverlay from './TrendLineOverlay';
+import { cleanTrendLines } from '../utils/trendLines';
+import { useChartTimeframe } from '../utils/chartTimeframe';
+import { MA_WARMUP_BARS, prepareMainHistory } from '../utils/chartHistory';
 
 const MAIN_TFS = [
   { label: '1분',  interval: '1m' },
@@ -35,8 +39,8 @@ const ICHI_TFS = [
 ];
 const DEFAULT_ICHI_TF = ICHI_TFS.find(tf => tf.interval === 'day') || ICHI_TFS[0];
 
-const MA_PERIODS = [5, 10, 20, 60, 120];
-const MA_COLORS  = ['#f59e0b', '#22c55e', '#a855f7', '#06b6d4', '#64748b'];
+const MA_PERIODS = [5, 10, 20, 60, 120, 200];
+const MA_COLORS  = ['#f59e0b', '#22c55e', '#a855f7', '#06b6d4', '#64748b', '#ec4899'];
 const INTRA_INTERVALS = ['1m','3m','5m','15m','30m','60m'];
 const PRICE_SCALE_WIDTH = 92;
 const ICHIMOKU_DISPLACEMENT = 26;
@@ -51,10 +55,10 @@ function isIntradayTf(tf) {
 function requestLimit(tf, baseLimit) {
   if (isIntradayTf(tf)) {
     const buffer = 1200;
-    return Math.min(Math.max(baseLimit + buffer, baseLimit * 4, 240), 2000);
+    return Math.min(Math.max(baseLimit + buffer, baseLimit * 4, baseLimit + MA_WARMUP_BARS), 2000 + MA_WARMUP_BARS);
   }
   const buffer = 720;
-  return Math.min(Math.max(baseLimit + buffer, baseLimit * 4), 2000);
+  return Math.min(Math.max(baseLimit + buffer, baseLimit * 4, baseLimit + MA_WARMUP_BARS), 2000 + MA_WARMUP_BARS);
 }
 
 function ichimokuRequestLimit(tf, baseLimit) {
@@ -852,7 +856,7 @@ const BASE_OPTS = {
   },
 };
 
-export default function ChartColumn({ id, defaultSymbol, defaultName, showBollinger = false, krxMarket = 'regular' }) {
+export default function ChartColumn({ id, defaultSymbol, defaultName, showBollinger = false, krxMarket = 'regular', globalWeekly = false }) {
   // ① localStorage로 마지막 선택 종목 복원
   const storageKey = `stock5_symbol_${id}`;
   const storedRaw   = localStorage.getItem(storageKey);
@@ -860,8 +864,25 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
   const [symbol,     setSymbol]     = useState(stored?.symbol || defaultSymbol || null);
   const [symbolName, setSymbolName] = useState(stored?.name   || defaultName   || '');
-  const [mainTf,     setMainTf]     = useState(MAIN_TFS[6]);   // 일봉 default
-  const [ichiTf,     setIchiTf]     = useState(DEFAULT_ICHI_TF); // 일봉 default
+  const [mainTf, setMainTf] = useChartTimeframe(MAIN_TFS[6], MAIN_TFS[7], globalWeekly);
+  const [ichiTf, setIchiTf] = useChartTimeframe(DEFAULT_ICHI_TF, ICHI_TFS[7], globalWeekly);
+  const trendStorageKey = `stock5_trends_${window.location.pathname}_${id}`;
+  const [trendLines, setTrendLines] = useState(() => {
+    try { return cleanTrendLines(JSON.parse(localStorage.getItem(trendStorageKey) || '{}')); }
+    catch { return {}; }
+  });
+  const [trendSaveError, setTrendSaveError] = useState('');
+  const [historyNotice, setHistoryNotice] = useState('');
+  const saveTrendLines = (lines) => {
+    const next = cleanTrendLines({ ...trendLines, [`${symbol}:${mainTf.interval}`]: lines });
+    setTrendLines(next);
+    try {
+      localStorage.setItem(trendStorageKey, JSON.stringify(next));
+      setTrendSaveError('');
+    } catch {
+      setTrendSaveError('추세선을 브라우저에 저장하지 못했습니다. 새로고침하면 사라질 수 있습니다.');
+    }
+  };
   const [limit,      setLimit]      = useState(120);
   const [limitInput, setLimitInput] = useState('120');
   const [ichiLimit,  setIchiLimit]  = useState(120);
@@ -884,6 +905,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     ma20: true,
     ma60: true,
     ma120: true,
+    ma200: true,
   });
   const [ichiVisible, setIchiVisible] = useState({
     candle: true,
@@ -913,6 +935,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
   const maMaps      = useRef([]);
   const macdDataRef = useRef([]);   // ③ MACD 데이터 저장
   const mainCandlesRef = useRef([]);
+  const indicatorHistoryRef = useRef([]);
   const mainVolumeRef = useRef([]);
   const crosshairValueMapsRef = useRef({ candle: new Map(), volume: new Map(), macd: new Map() });
   const ichiValueMapsRef = useRef({
@@ -926,6 +949,8 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
   const symbolRef   = useRef(symbol);
   const timeZoneRef = useRef(symbolTimeZone(symbol));
   const mainViewKeyRef = useRef('');
+  const mainRequestSeqRef = useRef(0);
+  const ichiRequestSeqRef = useRef(0);
   const ichiViewKeyRef = useRef('');
   const cloudCanvas = useRef(null);
   const syncLock    = useRef(false);
@@ -1445,6 +1470,51 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     chart.timeScale().subscribeVisibleTimeRangeChange(paint);
   }, []);
 
+  const renderMainHistory = useCallback((history, visibleCount) => {
+    const prepared = prepareMainHistory(history, visibleCount, MA_PERIODS);
+    const { candles, maLines, macd, bollinger, offset, missingWarmup } = prepared;
+    indicatorHistoryRef.current = history;
+    mainCandlesRef.current = candles;
+    setHistoryNotice(missingWarmup > 0
+      ? '과거 시세가 부족해 일부 구간의 200 이평선은 계산할 수 없습니다.'
+      : '');
+    ser.current.candle.setData(candles);
+    crosshairValueMapsRef.current.candle = new Map(candles.map(d => [timeKey(d.time), d.close]));
+
+    const volData = history.map((d, i) => {
+      const currentVolume = Number(d.volume);
+      if (!Number.isFinite(currentVolume)) return { time: d.time };
+      return {
+        time: d.time,
+        value: currentVolume,
+        color: volumeColorByChange(currentVolume, history[i - 1]?.volume),
+      };
+    }).slice(offset);
+    mainVolumeRef.current = volData;
+    ser.current.vol?.setData(volData);
+    crosshairValueMapsRef.current.volume = new Map(volData.filter(d => Number.isFinite(d.value)).map(d => [timeKey(d.time), d.value]));
+
+    macdDataRef.current = macd;
+    const histogram = macd.map(d => Number.isFinite(d.histogram)
+      ? { time: d.time, value: d.histogram, color: d.histogram >= 0 ? '#ef5350' : '#1565c0' }
+      : { time: d.time });
+    ser.current.macdHist?.setData(histogram);
+    ser.current.macdLine?.setData(macd.map(d => Number.isFinite(d.macd)
+      ? { time: d.time, value: d.macd } : { time: d.time }));
+    ser.current.signal?.setData(macd.map(d => Number.isFinite(d.signal)
+      ? { time: d.time, value: d.signal } : { time: d.time }));
+    crosshairValueMapsRef.current.macd = new Map(histogram.filter(d => Number.isFinite(d.value)).map(d => [timeKey(d.time), d.value]));
+
+    maMaps.current = maLines.map((data, idx) => {
+      ser.current.maLines[idx]?.setData(safeLineData(data));
+      return buildTimeMap(data);
+    });
+    ser.current.bollingerUpper?.setData(safeLineData(bollinger.map(({ time, upper }) => ({ time, value: upper }))));
+    ser.current.bollingerMiddle?.setData(safeLineData(bollinger.map(({ time, middle }) => ({ time, value: middle }))));
+    ser.current.bollingerLower?.setData(safeLineData(bollinger.map(({ time, lower }) => ({ time, value: lower }))));
+    return candles;
+  }, []);
+
   const applyRealtimeQuote = useCallback((quoteData) => {
     const activeSymbol = symbolRef.current;
     if (!activeSymbol || !quoteData || !Number.isFinite(Number(quoteData.price))) return;
@@ -1454,7 +1524,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     const barTime = realtimeBarTime(quoteData, mainTf);
     if (!barTime) return;
 
-    const candles = [...mainCandlesRef.current];
+    const candles = [...indicatorHistoryRef.current];
     const price = Number(quoteData.price);
     const tradeVolume = Number(quoteData.tradeVolume);
     const last = candles[candles.length - 1];
@@ -1482,51 +1552,10 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
       });
     }
 
-    mainCandlesRef.current = candles;
-    ser.current.candle.setData(candles);
-    crosshairValueMapsRef.current.candle = new Map(candles.map(d => [timeKey(d.time), d.close]));
-
-    const volData = candles.map((d, i) => {
-      const currentVolume = +d.volume;
-      const previousVolume = candles[i - 1]?.volume;
-      if (!Number.isFinite(currentVolume)) return { time: d.time };
-      return {
-        time: d.time,
-        value: currentVolume,
-        color: volumeColorByChange(currentVolume, previousVolume),
-      };
-    });
-    mainVolumeRef.current = volData;
-    ser.current.vol?.setData(volData);
-    crosshairValueMapsRef.current.volume = new Map(volData.filter(d => Number.isFinite(d.value)).map(d => [timeKey(d.time), d.value]));
-
-    const macd = calculateMACD(candles);
-    macdDataRef.current = macd;
-    const macdHistData = macd.map(d => (
-      Number.isFinite(d.histogram)
-        ? { time: d.time, value: d.histogram, color: d.histogram >= 0 ? '#ef5350' : '#1565c0' }
-        : { time: d.time }
-    ));
-    ser.current.macdHist?.setData(macdHistData);
-    ser.current.macdLine?.setData(macd.map(d => (
-      Number.isFinite(d.macd) ? { time: d.time, value: d.macd } : { time: d.time }
-    )));
-    ser.current.signal?.setData(macd.map(d => (
-      Number.isFinite(d.signal) ? { time: d.time, value: d.signal } : { time: d.time }
-    )));
-    crosshairValueMapsRef.current.macd = new Map(macdHistData.filter(d => Number.isFinite(d.value)).map(d => [timeKey(d.time), d.value]));
-
-    maMaps.current = MA_PERIODS.map((period, idx) => {
-      const maData = calculateMA(candles, period);
-      ser.current.maLines[idx]?.setData(safeLineData(maData));
-      return buildTimeMap(maData);
-    });
-    const bollinger = calculateBollingerBands(candles);
-    ser.current.bollingerUpper?.setData(safeLineData(bollinger.map(({ time, upper }) => ({ time, value: upper }))));
-    ser.current.bollingerMiddle?.setData(safeLineData(bollinger.map(({ time, middle }) => ({ time, value: middle }))));
-    ser.current.bollingerLower?.setData(safeLineData(bollinger.map(({ time, lower }) => ({ time, value: lower }))));
+    renderMainHistory(candles, limit);
     drawMacdBackground();
-  }, [drawMacdBackground, mainTf]);
+    priceRef.current?.dispatchEvent(new Event('trend-data'));
+  }, [drawMacdBackground, mainTf, limit, renderMainHistory]);
 
   const fetchQuote = useCallback(async (sym, signal) => {
     if (!sym) return;
@@ -1569,6 +1598,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
   // ─── 메인 3개 차트 데이터 로드 ───────────────────────
   const fetchMain = useCallback(async (sym, tf, lim, { followLatest = false } = {}) => {
     if (!sym || !ser.current.candle) return;
+    const requestSeq = ++mainRequestSeqRef.current;
     const viewKey = `${sym}:${tf.interval}:${lim}`;
     const r    = await fetch(apiUrl(`/ohlcv?symbol=${encodeURIComponent(sym)}&interval=${tf.interval}&limit=${requestLimit(tf, lim)}`));
     const contentType = r.headers.get('content-type') || '';
@@ -1580,6 +1610,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
       throw new Error('시세 API가 JSON 대신 HTML을 반환했습니다. 배포 API 연결을 확인하세요.');
     }
     const data = await r.json();
+    if (requestSeq !== mainRequestSeqRef.current || !ser.current.candle) return;
     if (!Array.isArray(data) || !data.length) {
       throw new Error(`${tf.label} 데이터가 비어 있습니다.`);
     }
@@ -1587,68 +1618,16 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
     // ② null 값 필터링
     const candles = normalizeCandleData(data);
     if (!candles.length) throw new Error('시세 데이터가 비어 있습니다.');
-    crosshairValueMapsRef.current = { candle: new Map(), volume: new Map(), macd: new Map() };
-    mainCandlesRef.current = candles;
-    ser.current.candle.setData(candles);
-    crosshairValueMapsRef.current.candle = new Map(candles.map(d => [timeKey(d.time), d.close]));
-
-    // MA 계산 및 팝업용 맵 저장
-    maMaps.current = MA_PERIODS.map((period, idx) => {
-      const maData = calculateMA(candles, period);
-      ser.current.maLines[idx]?.setData(safeLineData(maData));
-      return buildTimeMap(maData);
-    });
-    const bollinger = calculateBollingerBands(candles);
-    ser.current.bollingerUpper?.setData(safeLineData(bollinger.map(({ time, upper }) => ({ time, value: upper }))));
-    ser.current.bollingerMiddle?.setData(safeLineData(bollinger.map(({ time, middle }) => ({ time, value: middle }))));
-    ser.current.bollingerLower?.setData(safeLineData(bollinger.map(({ time, lower }) => ({ time, value: lower }))));
-
-    // 거래량
-    const volData = candles
-      .map((d, i) => {
-        const currentVolume = +d.volume;
-        const previousVolume = candles[i - 1]?.volume;
-        if (!Number.isFinite(currentVolume)) return { time: d.time };
-        return {
-          time: d.time,
-          value: currentVolume,
-          color: volumeColorByChange(currentVolume, previousVolume),
-        };
-      });
-    mainVolumeRef.current = volData;
-    ser.current.vol.setData(volData);
-    crosshairValueMapsRef.current.volume = new Map(volData.filter(d => Number.isFinite(d.value)).map(d => [timeKey(d.time), d.value]));
-
-    // MACD
-    const macd = calculateMACD(candles);
-    macdDataRef.current = macd;
-    const macdHistData = macd.map(d => (
-      Number.isFinite(d.histogram)
-        ? {
-          time: d.time,
-          value: d.histogram,
-          color: d.histogram >= 0 ? '#ef5350' : '#1565c0',
-        }
-        : { time: d.time }
-    ));
-    const macdLineData = macd.map(d => (
-      Number.isFinite(d.macd) ? { time: d.time, value: d.macd } : { time: d.time }
-    ));
-    const signalData = macd.map(d => (
-      Number.isFinite(d.signal) ? { time: d.time, value: d.signal } : { time: d.time }
-    ));
-    ser.current.macdHist.setData(macdHistData);
-    crosshairValueMapsRef.current.macd = new Map(macdHistData.filter(d => Number.isFinite(d.value)).map(d => [timeKey(d.time), d.value]));
-    ser.current.macdLine.setData(macdLineData);
-    ser.current.signal.setData(signalData);
+    const chartCandles = renderMainHistory(candles, lim);
 
     // ③ MACD 배경 그리기 (약간 지연 → 차트 렌더 후)
     requestAnimationFrame(() => {
+      if (requestSeq !== mainRequestSeqRef.current) return;
       if (mainViewKeyRef.current !== viewKey || followLatest) {
-        const visibleBars = Math.min(lim, candles.length);
+        const visibleBars = Math.min(lim, chartCandles.length);
         const range = {
-          from: Math.max(0, candles.length - visibleBars),
-          to: Math.max(0, candles.length - 1),
+          from: Math.max(0, chartCandles.length - visibleBars),
+          to: Math.max(0, chartCandles.length - 1),
         };
         [charts.current.price, charts.current.volume, charts.current.macd].forEach(chart => {
           try { chart?.timeScale().setVisibleLogicalRange(range); } catch (e) { console.warn('setVisibleLogicalRange skipped:', e); }
@@ -1656,11 +1635,13 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
         mainViewKeyRef.current = viewKey;
       }
       drawMacdBackground();
+      priceRef.current?.dispatchEvent(new Event('trend-data'));
     });
-  }, [drawMacdBackground]);
+  }, [drawMacdBackground, renderMainHistory]);
 
   const fetchIchi = useCallback(async (sym, tf, lim) => {
     if (!sym || !ser.current.ichiCandle) return;
+    const requestSeq = ++ichiRequestSeqRef.current;
     const r    = await fetch(apiUrl(`/ohlcv?symbol=${encodeURIComponent(sym)}&interval=${tf.interval}&limit=${ichimokuRequestLimit(tf, lim)}`));
     const contentType = r.headers.get('content-type') || '';
     if (!r.ok) {
@@ -1671,6 +1652,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
       throw new Error('시세 API가 JSON 대신 HTML을 반환했습니다. 배포 API 연결을 확인하세요.');
     }
     const data = await r.json();
+    if (requestSeq !== ichiRequestSeqRef.current || !ser.current.ichiCandle) return;
     if (!Array.isArray(data) || !data.length) {
       ser.current.ichiCandle.setData([]);
       ser.current.tenkan.setData([]);
@@ -1739,6 +1721,7 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
 
     const viewKey = `${sym}:${tf.interval}:${visibleCount}`;
     requestAnimationFrame(() => {
+      if (requestSeq !== ichiRequestSeqRef.current) return;
       if (ichiViewKeyRef.current !== viewKey) {
         try {
           charts.current.ichi?.timeScale().setVisibleLogicalRange({
@@ -1757,25 +1740,31 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
   // 메인 캔들/거래량/MACD는 위쪽 봉 버튼과 기간만 바뀔 때 다시 로드
   useEffect(() => {
     if (!symbol) return;
+    let active = true;
     const timer = setTimeout(() => {
       setError('');
       setLoading(true);
     }, 0);
     fetchMain(symbol, mainTf, limit)
       .catch(e => {
-        if (!String(e.message || '').includes('Value is null')) setError(e.message);
+        if (active && !String(e.message || '').includes('Value is null')) setError(e.message);
       })
       .finally(() => {
         clearTimeout(timer);
-        setLoading(false);
+        if (active) setLoading(false);
       });
-    return () => clearTimeout(timer);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      mainRequestSeqRef.current += 1;
+    };
   }, [symbol, mainTf, limit, loadVersion, fetchMain]);
 
   // 일목균형표는 아래쪽 일목 봉 버튼과 기간이 바뀔 때만 다시 로드
   useEffect(() => {
     if (!symbol) return;
     fetchIchi(symbol, ichiTf, ichiLimit).catch(() => {});
+    return () => { ichiRequestSeqRef.current += 1; };
   }, [symbol, ichiTf, ichiLimit, loadVersion, fetchIchi]);
 
   useEffect(() => {
@@ -1965,6 +1954,8 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
           </div>
         )}
         {error && <div className="error-bar">{error}</div>}
+        {historyNotice && <div className="history-notice" role="status">{historyNotice}</div>}
+        {trendSaveError && <div className="error-bar" role="status">{trendSaveError}</div>}
 
         <div className="controls-row">
           <div className="tf-group">
@@ -2028,6 +2019,12 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
             <span className="legend-swatch" style={{ backgroundColor: MA_COLORS[i] }} />{p}
           </button>
         ))}
+        <span
+          className={`legend-btn bollinger-legend${showBollinger ? '' : ' muted'}`}
+          title="20기간 이동평균 ± 2 표준편차. 헤더 BB 버튼으로 전체 표시/숨김"
+        >
+          <span className="legend-swatch bollinger" />볼린저밴드
+        </span>
       </div>
 
       {/* 차트 영역 */}
@@ -2035,6 +2032,13 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
         <div ref={priceSectionRef} className="chart-section" style={{ position: 'relative' }}>
           <div className="chart-label">캔들차트</div>
           <div ref={priceRef} />
+          <TrendLineOverlay
+            key={`${symbol}:${mainTf.interval}:${krxMarket}`}
+            chartsRef={charts} seriesRef={ser} candlesRef={mainCandlesRef}
+            containerRef={priceRef} ready={chartsReady && !loading}
+            lines={trendLines[`${symbol}:${mainTf.interval}`] || []}
+            onChange={saveTrendLines}
+          />
           {/* ③ MACD 배경 캔버스는 priceRef 안에 동적 삽입 */}
           {/* ⑤⑨ OHLC + MA 팝업 */}
           <div ref={tooltipRef} className="price-tooltip" />

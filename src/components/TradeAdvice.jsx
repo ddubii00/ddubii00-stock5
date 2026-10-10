@@ -41,7 +41,6 @@ export default function TradeAdvice({ symbol }) {
   return (
     <div className={`signal-advice ${advice.tone}`} aria-label="일봉 기준 매매 참고 지침" title={title}>
       <span>{advice.text}</span>
-      <small>{date ? `일봉 ${date} 기준 · ` : ''}규칙 기반 참고 지침</small>
     </div>
   );
 }

@@ -194,18 +194,21 @@ html, body {
 
 /* ── COLUMN ── */
 .signal-advice {
-  margin: 4px 7px 5px;
-  padding: 5px 7px;
+  margin: 2px 7px 3px;
+  padding: 2px 7px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.25;
   font-weight: 600;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .signal-advice.sell { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
 .signal-advice.buy { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
 .signal-advice.neutral { color: #334155; background: #f8fafc; }
-.signal-advice small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; font-weight: 400; }
 
 .chart-column {
   background: var(--panel);
@@ -584,20 +587,21 @@ html, body {
   pointer-events: none;
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid #e2e5ec;
-  border-radius: 6px;
-  padding: 5px 8px;
+  border-radius: 4px;
+  padding: 2px 4px;
   box-shadow: 0 5px 14px rgba(0,0,0,0.12);
-  width: 168px;
-  font-size: 11px;
-  line-height: 1.2;
+  width: max-content;
+  max-width: calc(100% - 8px);
+  font-size: 9px;
+  line-height: 1;
   backdrop-filter: blur(3px);
 }
 
 .tt-date {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
   font-weight: 500;
-  margin-bottom: 5px;
+  margin-bottom: 2px;
   letter-spacing: 0.02em;
 }
 
@@ -605,8 +609,8 @@ html, body {
   display: flex;
   gap: 4px;
   justify-content: space-between;
-  margin-bottom: 2px;
-  font-size: 11px;
+  margin-bottom: 1px;
+  font-size: 9px;
   white-space: nowrap;
 }
 .tt-row b { font-weight: 600; }
@@ -616,13 +620,13 @@ html, body {
 .tt-ma-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px 6px;
-  margin-top: 3px;
-  padding-top: 3px;
+  gap: 1px 4px;
+  margin-top: 1px;
+  padding-top: 1px;
   border-top: 1px solid #f0f2f5;
 }
 .tt-ma {
-  font-size: 10.5px;
+  font-size: 9px;
   font-weight: 500;
   white-space: nowrap;
   min-width: 0;
@@ -637,16 +641,17 @@ html, body {
   z-index: 120;
   pointer-events: none;
   grid-template-columns: 1fr 1fr;
-  gap: 2px 6px;
-  width: 144px;
-  padding: 4px 6px;
+  gap: 1px 4px;
+  width: max-content;
+  max-width: calc(100% - 8px);
+  padding: 2px 4px;
   border: 1px solid rgba(203, 213, 225, .78);
   border-radius: 5px;
   background: rgba(255, 255, 255, .72);
   box-shadow: 0 4px 12px rgba(15, 23, 42, .12);
   backdrop-filter: blur(2px);
-  font-size: 10px;
-  line-height: 1.12;
+  font-size: 9px;
+  line-height: 1;
 }
 
 .ichi-tt-item {

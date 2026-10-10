@@ -16,7 +16,8 @@ Amounts retain their reported currency; no currency conversion is performed.
 ## Rule-Based Trade Guidance
 
 Below the candle legend and fundamentals, the app displays Stock5-8's partial
-buy/sell rules, percentages, track, contributing signals, and daily as-of date.
+buy/sell rules, percentages, track, and contributing signals. The daily as-of date
+and calculation notes are available by hovering the guidance strip.
 The calculation always uses the latest 500 daily OHLCV rows, regardless of chart
 timeframe or visible period, and needs at least 120 valid rows. It is reviewed
 hourly; failed requests retry after one minute. Intraday daily bars are unfinished

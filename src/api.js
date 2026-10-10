@@ -1,8 +1,7 @@
-function detectApiBase() {
-  if (typeof window === 'undefined') return '/stock5-7/api';
-
-  const match = window.location.pathname.match(/^\/(stock5-\d+)(?:\/|$)/);
-  return match ? `/${match[1]}/api` : '/stock5-7/api';
+export function detectApiBase(location = typeof window === 'undefined' ? null : window.location) {
+  if (!location || /(^|\.)vercel\.app$/i.test(location.hostname || '')) return '/api';
+  const match = (location.pathname || '').match(/^\/(stock5-\d+)(?:\/|$)/);
+  return match ? `/${match[1]}/api` : '/api';
 }
 
 export const API_BASE = detectApiBase();

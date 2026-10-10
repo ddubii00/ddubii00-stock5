@@ -13,6 +13,8 @@ import TrendLineOverlay from './TrendLineOverlay';
 import { cleanTrendLines } from '../utils/trendLines';
 import { useChartTimeframe } from '../utils/chartTimeframe';
 import { MA_WARMUP_BARS, prepareMainHistory } from '../utils/chartHistory';
+import FundamentalsStrip from './FundamentalsStrip';
+import TradeAdvice from './TradeAdvice';
 
 const MAIN_TFS = [
   { label: '1분',  interval: '1m' },
@@ -2025,6 +2027,9 @@ export default function ChartColumn({ id, defaultSymbol, defaultName, showBollin
           <span className="legend-swatch bollinger" />볼린저밴드
         </span>
       </div>
+
+      <FundamentalsStrip symbol={symbol} />
+      <TradeAdvice symbol={symbol} />
 
       {/* 차트 영역 */}
       <div className="charts-area">

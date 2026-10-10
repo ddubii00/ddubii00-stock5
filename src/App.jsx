@@ -12,6 +12,14 @@ const COLUMNS = [
   { id: 'col-4', defaultSymbol: '^KS11',     defaultName: 'KOSPI 종합' },
 ];
 
+const MARKET_ITEMS = [
+  { key: 'usdKrw', symbol: 'KRW=X', label: '달러/원' },
+  { key: 'kospi', symbol: '^KS11', label: 'KOSPI' },
+  { key: 'kosdaq', symbol: '^KQ11', label: 'KOSDAQ' },
+  { key: 'nasdaq', symbol: '^IXIC', label: '나스닥' },
+  { key: 'sp500', symbol: '^GSPC', label: 'S&P500' },
+];
+
 function formatFixed(value, digits = 2) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '';
@@ -67,6 +75,21 @@ function isUsOpen() {
   return isWeekday(weekday) && minutes >= 9 * 60 + 30 && minutes <= 16 * 60;
 }
 
+function MarketQuote({ item, quote }) {
+  const hasPrice = Number.isFinite(quote?.price);
+  const hasChange = Number.isFinite(quote?.changePct) && Number.isFinite(quote?.change);
+  const direction = hasChange && quote.change !== 0 ? (quote.change > 0 ? 'up' : 'down') : '';
+  return (
+    <span className={`market-item ${direction}`} data-market={item.key}
+      title={hasPrice ? undefined : '시세를 불러오는 중입니다. 조회 실패 시 자동으로 재시도합니다.'}>
+      {item.label}<strong className="market-price">{hasPrice ? formatFixed(quote.price, 0) : '—'}</strong>
+      <span className="market-change market-change-fixed">
+        {hasChange ? `(${formatSignedPercent(quote.changePct)}, ${formatSignedFixed(quote.change, 1)})` : '(—%, —)'}
+      </span>
+    </span>
+  );
+}
+
 function App() {
   const [marketSummary, setMarketSummary] = useState({ kospi: null, kosdaq: null, nasdaq: null, sp500: null, usdKrw: null });
   const [showBollinger, setShowBollinger] = useState(false);
@@ -77,111 +100,53 @@ function App() {
   const fetchQuote = useCallback(async (symbol, signal) => {
     const response = await fetch(
       apiUrl(`/quote?symbol=${encodeURIComponent(symbol)}&market=${krxMarket}`),
-      { signal }
+      { signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]) }
     );
     const contentType = response.headers.get('content-type') || '';
     if (!response.ok || !contentType.includes('application/json')) return null;
 
     const data = await response.json();
-    return data && Number.isFinite(Number(data.price)) ? data : null;
+    return data?.price != null && Number.isFinite(Number(data.price))
+      ? { ...data, price: Number(data.price) } : null;
   }, [krxMarket]);
-
-  const refreshMarketSummary = useCallback(async (signal) => {
-    const [kospi, kosdaq, nasdaq, sp500, usdKrw] = await Promise.all([
-      fetchQuote('^KS11', signal).catch(() => null),
-      fetchQuote('^KQ11', signal).catch(() => null),
-      fetchQuote('^IXIC', signal).catch(() => null),
-      fetchQuote('^GSPC', signal).catch(() => null),
-      fetchQuote('KRW=X', signal).catch(() => null),
-    ]);
-
-    setMarketSummary((current) => ({
-      kospi: kospi || current.kospi,
-      kosdaq: kosdaq || current.kosdaq,
-      nasdaq: nasdaq || current.nasdaq,
-      sp500: sp500 || current.sp500,
-      usdKrw: usdKrw || current.usdKrw,
-    }));
-  }, [fetchQuote]);
 
   useEffect(() => {
     const controller = new AbortController();
-    const update = () => refreshMarketSummary(controller.signal).catch(() => {});
-
-    update();
+    const loaded = new Set();
     let timer = null;
-
-    if (isKrxUpdateWindow(krxMarket) || isUsOpen()) {
-      timer = setInterval(() => {
-        if (!isKrxUpdateWindow(krxMarket) && !isUsOpen()) {
-          clearInterval(timer);
-          timer = null;
-          return;
-        }
-        update();
-      }, isKrxUpdateWindow(krxMarket) ? 1000 : 3000);
-    }
+    const update = async () => {
+      const krxOpen = isKrxUpdateWindow(krxMarket);
+      const usOpen = isUsOpen();
+      const items = MARKET_ITEMS.filter(item => {
+        if (!loaded.has(item.key)) return true;
+        if (item.key === 'kospi' || item.key === 'kosdaq') return krxOpen;
+        if (item.key === 'usdKrw') return krxOpen || usOpen;
+        return usOpen;
+      });
+      await Promise.all(items.map(async item => {
+        const quote = await fetchQuote(item.symbol, controller.signal).catch(() => null);
+        if (!quote || controller.signal.aborted) return;
+        loaded.add(item.key);
+        // Publish each quote as it arrives, even when another provider is slow.
+        setMarketSummary(current => ({ ...current, [item.key]: quote }));
+      }));
+      if (!controller.signal.aborted) {
+        timer = setTimeout(update, krxOpen ? 1000 : usOpen ? 3000 : 30000);
+      }
+    };
+    update();
 
     return () => {
       controller.abort();
-      if (timer) clearInterval(timer);
+      if (timer) clearTimeout(timer);
     };
-  }, [krxMarket, refreshMarketSummary]);
+  }, [krxMarket, fetchQuote]);
 
   return (
     <div className="app">
       <header className="app-header">
         <div className="market-summary" aria-label="시장 요약">
-          {marketSummary.usdKrw && (
-            <span className={`market-item ${marketSummary.usdKrw.change >= 0 ? 'up' : 'down'}`}>
-              달러/원<strong className="market-price">{formatFixed(marketSummary.usdKrw.price, 0)}</strong>
-              {Number.isFinite(marketSummary.usdKrw.changePct) && Number.isFinite(marketSummary.usdKrw.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.usdKrw.changePct)}, {formatSignedFixed(marketSummary.usdKrw.change, 1)})
-                </span>
-              )}
-            </span>
-          )}
-          {marketSummary.kospi && (
-            <span className={`market-item ${marketSummary.kospi.change >= 0 ? 'up' : 'down'}`}>
-              KOSPI<strong className="market-price">{formatFixed(marketSummary.kospi.price, 0)}</strong>
-              {Number.isFinite(marketSummary.kospi.changePct) && Number.isFinite(marketSummary.kospi.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.kospi.changePct)}, {formatSignedFixed(marketSummary.kospi.change, 1)})
-                </span>
-              )}
-            </span>
-          )}
-          {marketSummary.kosdaq && (
-            <span className={`market-item ${marketSummary.kosdaq.change >= 0 ? 'up' : 'down'}`}>
-              KOSDAQ<strong className="market-price">{formatFixed(marketSummary.kosdaq.price, 0)}</strong>
-              {Number.isFinite(marketSummary.kosdaq.changePct) && Number.isFinite(marketSummary.kosdaq.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.kosdaq.changePct)}, {formatSignedFixed(marketSummary.kosdaq.change, 1)})
-                </span>
-              )}
-            </span>
-          )}
-          {marketSummary.nasdaq && (
-            <span className={`market-item ${marketSummary.nasdaq.change >= 0 ? 'up' : 'down'}`}>
-              나스닥<strong className="market-price">{formatFixed(marketSummary.nasdaq.price, 0)}</strong>
-              {Number.isFinite(marketSummary.nasdaq.changePct) && Number.isFinite(marketSummary.nasdaq.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.nasdaq.changePct)}, {formatSignedFixed(marketSummary.nasdaq.change, 1)})
-                </span>
-              )}
-            </span>
-          )}
-          {marketSummary.sp500 && (
-            <span className={`market-item ${marketSummary.sp500.change >= 0 ? 'up' : 'down'}`}>
-              S&amp;P500<strong className="market-price">{formatFixed(marketSummary.sp500.price, 0)}</strong>
-              {Number.isFinite(marketSummary.sp500.changePct) && Number.isFinite(marketSummary.sp500.change) && (
-                <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.sp500.changePct)}, {formatSignedFixed(marketSummary.sp500.change, 1)})
-                </span>
-              )}
-            </span>
-          )}
+          {MARKET_ITEMS.map(item => <MarketQuote key={item.key} item={item} quote={marketSummary[item.key]} />)}
         </div>
         <div className="header-controls" aria-label="차트 및 한국 시장 시세 설정">
           <button

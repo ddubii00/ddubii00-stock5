@@ -28,6 +28,21 @@ The market header stays on one line. Narrow screens scroll only the header
 horizontally. Vercel calls `/api`; Oracle subpath installations retain their
 `/stock5-N/api` namespace.
 
+## Three-Line Break
+
+The header's `삼선` toggle switches all main price charts to Stock5-8's close-based
+three-line break, off by default. Press it again to restore the original candles.
+It works with each selected timeframe and the global weekly toggle; Ichimoku
+continues to use the original OHLCV bars. Line timestamps are the source breakout
+dates, not fabricated trading dates. Volume is accumulated once per source bar
+until a line forms; unconfirmed volume waits for the next line.
+
+Moving averages and Bollinger bands use synthetic line closes, with earlier lines
+retained for indicator warm-up. MACD and its background are blank in this mode,
+including in copied/analyzed images. Trend drawings are stored separately for
+candles and line-break charts. Live updates change the original intraday bar and
+recalculate the synthetic lines; unfinished bars can create or retract a line.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

@@ -193,6 +193,7 @@ html, body {
 }
 
 /* ── COLUMN ── */
+.macd-blank { background: var(--panel2); }
 .signal-advice {
   margin: 2px 7px 3px;
   padding: 2px 7px;

@@ -70,6 +70,7 @@ function isUsOpen() {
 function App() {
   const [marketSummary, setMarketSummary] = useState({ kospi: null, kosdaq: null, nasdaq: null, sp500: null, usdKrw: null });
   const [showBollinger, setShowBollinger] = useState(false);
+  const [showLineBreak, setShowLineBreak] = useState(false);
   const [globalWeekly, setGlobalWeekly] = useState(false);
   const [krxMarket, setKrxMarket] = useState('regular');
 
@@ -185,6 +186,15 @@ function App() {
         <div className="header-controls" aria-label="차트 및 한국 시장 시세 설정">
           <button
             type="button"
+            className={`header-bb-button${showLineBreak ? ' active' : ''}`}
+            onClick={() => setShowLineBreak(enabled => !enabled)}
+            title="전체 메인 차트 삼선전환도 표시/해제 (일목균형표 유지)"
+            aria-pressed={showLineBreak}
+          >
+            삼선
+          </button>
+          <button
+            type="button"
             className={`header-bb-button${globalWeekly ? ' active' : ''}`}
             onClick={() => setGlobalWeekly(enabled => !enabled)}
             title="전체 캔들·거래량·MACD·일목균형표를 주봉으로 전환. 끄면 이전 주기로 복원"
@@ -230,6 +240,7 @@ function App() {
             defaultSymbol={col.defaultSymbol}
             defaultName={col.defaultName}
             showBollinger={showBollinger}
+            showLineBreak={showLineBreak}
             globalWeekly={globalWeekly}
             krxMarket={krxMarket}
           />

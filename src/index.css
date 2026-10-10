@@ -67,7 +67,7 @@ html, body {
 
 .market-item {
   color: var(--muted);
-  font-size: clamp(11px, 0.85vw, 13px);
+  font-size: clamp(12px, 0.95vw, 15px);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -75,14 +75,14 @@ html, body {
 
 .market-item strong {
   color: var(--text);
-  font-size: clamp(12px, 0.95vw, 15px);
+  font-size: clamp(14px, 1.1vw, 17px);
   font-weight: 800;
   margin-left: 0;
 }
 
 .market-price {
   display: inline-block;
-  min-width: 7.5ch;
+  min-width: 6ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -108,7 +108,7 @@ html, body {
 
 .market-change-fixed {
   display: inline-block;
-  min-width: 13.5ch;
+  min-width: 12ch;
   text-align: left;
   font-variant-numeric: tabular-nums;
 }

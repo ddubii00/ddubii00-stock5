@@ -32,7 +32,7 @@ function formatSignedPercent(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '';
   const sign = n > 0 ? '+' : '';
-  return `${sign}${n.toFixed(2)}%`;
+  return `${sign}${n.toFixed(1)}%`;
 }
 
 function timeParts(timeZone) {
@@ -133,50 +133,50 @@ function App() {
         <div className="market-summary" aria-label="시장 요약">
           {marketSummary.usdKrw && (
             <span className={`market-item ${marketSummary.usdKrw.change >= 0 ? 'up' : 'down'}`}>
-              달러/원<strong className="market-price">{formatFixed(marketSummary.usdKrw.price, 2)}</strong>
+              달러/원<strong className="market-price">{formatFixed(marketSummary.usdKrw.price, 0)}</strong>
               {Number.isFinite(marketSummary.usdKrw.changePct) && Number.isFinite(marketSummary.usdKrw.change) && (
                 <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.usdKrw.changePct)}, {formatSignedFixed(marketSummary.usdKrw.change, 2)})
+                  ({formatSignedPercent(marketSummary.usdKrw.changePct)}, {formatSignedFixed(marketSummary.usdKrw.change, 1)})
                 </span>
               )}
             </span>
           )}
           {marketSummary.kospi && (
             <span className={`market-item ${marketSummary.kospi.change >= 0 ? 'up' : 'down'}`}>
-              KOSPI<strong className="market-price">{formatFixed(marketSummary.kospi.price, 2)}</strong>
+              KOSPI<strong className="market-price">{formatFixed(marketSummary.kospi.price, 0)}</strong>
               {Number.isFinite(marketSummary.kospi.changePct) && Number.isFinite(marketSummary.kospi.change) && (
                 <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.kospi.changePct)}, {formatSignedFixed(marketSummary.kospi.change, 2)})
+                  ({formatSignedPercent(marketSummary.kospi.changePct)}, {formatSignedFixed(marketSummary.kospi.change, 1)})
                 </span>
               )}
             </span>
           )}
           {marketSummary.kosdaq && (
             <span className={`market-item ${marketSummary.kosdaq.change >= 0 ? 'up' : 'down'}`}>
-              KOSDAQ<strong className="market-price">{formatFixed(marketSummary.kosdaq.price, 2)}</strong>
+              KOSDAQ<strong className="market-price">{formatFixed(marketSummary.kosdaq.price, 0)}</strong>
               {Number.isFinite(marketSummary.kosdaq.changePct) && Number.isFinite(marketSummary.kosdaq.change) && (
                 <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.kosdaq.changePct)}, {formatSignedFixed(marketSummary.kosdaq.change, 2)})
+                  ({formatSignedPercent(marketSummary.kosdaq.changePct)}, {formatSignedFixed(marketSummary.kosdaq.change, 1)})
                 </span>
               )}
             </span>
           )}
           {marketSummary.nasdaq && (
             <span className={`market-item ${marketSummary.nasdaq.change >= 0 ? 'up' : 'down'}`}>
-              나스닥<strong className="market-price">{formatFixed(marketSummary.nasdaq.price, 2)}</strong>
+              나스닥<strong className="market-price">{formatFixed(marketSummary.nasdaq.price, 0)}</strong>
               {Number.isFinite(marketSummary.nasdaq.changePct) && Number.isFinite(marketSummary.nasdaq.change) && (
                 <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.nasdaq.changePct)}, {formatSignedFixed(marketSummary.nasdaq.change, 2)})
+                  ({formatSignedPercent(marketSummary.nasdaq.changePct)}, {formatSignedFixed(marketSummary.nasdaq.change, 1)})
                 </span>
               )}
             </span>
           )}
           {marketSummary.sp500 && (
             <span className={`market-item ${marketSummary.sp500.change >= 0 ? 'up' : 'down'}`}>
-              S&amp;P500<strong className="market-price">{formatFixed(marketSummary.sp500.price, 2)}</strong>
+              S&amp;P500<strong className="market-price">{formatFixed(marketSummary.sp500.price, 0)}</strong>
               {Number.isFinite(marketSummary.sp500.changePct) && Number.isFinite(marketSummary.sp500.change) && (
                 <span className="market-change market-change-fixed">
-                  ({formatSignedPercent(marketSummary.sp500.changePct)}, {formatSignedFixed(marketSummary.sp500.change, 2)})
+                  ({formatSignedPercent(marketSummary.sp500.changePct)}, {formatSignedFixed(marketSummary.sp500.change, 1)})
                 </span>
               )}
             </span>
